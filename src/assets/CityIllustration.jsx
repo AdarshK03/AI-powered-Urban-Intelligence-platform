@@ -17,7 +17,7 @@ const Tree = ({ x, y, s = 1, c = '#4C9A5A' }) => (
 
 export default function CityIllustration() {
   return (
-    <svg viewBox="0 0 300 220" role="img" aria-label="Illustration of a city with buildings, a road, trees and a park" className="city-illustration">
+    <svg viewBox="0 0 300 220" role="img" aria-label="Illustration of a city with buildings, a road, trees and a park" className="mx-auto my-4 block w-full max-w-[300px]">
       <ellipse cx="150" cy="150" rx="146" ry="62" fill="#F1F7F7" />
       {towers.map(([x, y, w, h, fill], i) => (
         <g key={i}>

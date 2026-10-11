@@ -1,3 +1,4 @@
+@import "tailwindcss";
 :root {
   --teal: #0D9488; --teal-dark: #0F766E; --navy: #0F172A; --text: #334155; --muted: #64748B;
   --border: #E2E8F0; --bg: #F3F8F8; --soft: #F1F5F9;
