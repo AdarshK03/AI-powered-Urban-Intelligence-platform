@@ -19,7 +19,175 @@ import {
   X,
   Menu,
   Check,
+  Plus,
 } from 'lucide-react'
+
+import Toast from './components/Toast'
+import NewIssueModal from './components/NewIssueModal'
+import IssueDetailModal from './components/IssueDetailModal'
+import LogoutModal from './components/LogoutModal'
+import LoginScreen from './components/LoginScreen'
+import OverviewTab from './components/OverviewTab'
+import AllIssuesTab from './components/AllIssuesTab'
+import MapViewTab from './components/MapViewTab'
+import AssignmentsTab from './components/AssignmentsTab'
+import DepartmentsTab from './components/DepartmentsTab'
+import AnalyticsTab from './components/AnalyticsTab'
+import ReportsTab from './components/ReportsTab'
+import NotificationsTab from './components/NotificationsTab'
+import SettingsTab from './components/SettingsTab'
+
+// Initial municipal departments dataset
+const INITIAL_DEPARTMENTS = [
+  {
+    id: 'dept-1',
+    name: 'Public Works Department (PWD)',
+    shortCode: 'PWD',
+    officer: 'Er. Rajesh K. Sharma',
+    email: 'pwd.delhi@gov.in',
+    phone: '+91 11 2339 2001',
+    avgResponseHours: 14,
+  },
+  {
+    id: 'dept-2',
+    name: 'Municipal Corporation (South Zone)',
+    shortCode: 'MCD',
+    officer: 'Smt. Ananya Sen, IAS',
+    email: 'mcd.south@delhi.gov.in',
+    phone: '+91 11 2651 8840',
+    avgResponseHours: 22,
+  },
+  {
+    id: 'dept-3',
+    name: 'Water & Sewage Utility Authority',
+    shortCode: 'DJB',
+    officer: 'Dr. Vikram Malhotra',
+    email: 'support@delhijalboard.nic.in',
+    phone: '+91 11 2353 8490',
+    avgResponseHours: 19,
+  },
+  {
+    id: 'dept-4',
+    name: 'Department of Urban Power & Lighting',
+    shortCode: 'BSES',
+    officer: 'Shri Amitav Ghosh',
+    email: 'streetlighting@urbanpower.org',
+    phone: '+91 11 3999 9707',
+    avgResponseHours: 8,
+  },
+  {
+    id: 'dept-5',
+    name: 'Drainage & Stormwater Division',
+    shortCode: 'IFCD',
+    officer: 'Er. Kavita Verma',
+    email: 'stormwater@delhi-flood.nic.in',
+    phone: '+91 11 2386 1124',
+    avgResponseHours: 12,
+  },
+  {
+    id: 'dept-6',
+    name: 'Road Safety & Traffic Engineering',
+    shortCode: 'DTP',
+    officer: 'DCP Manish Singhal, IPS',
+    email: 'trafficsafety@delhipolice.gov.in',
+    phone: '+91 11 2584 4444',
+    avgResponseHours: 6,
+  },
+]
+
+// Initial maintenance field crew roster
+const INITIAL_CREWS = [
+  {
+    id: 'crew-1',
+    name: 'Rapid Asphalt Patch Crew #1',
+    specialty: 'Potholes & Pavement Resurfacing',
+    leader: 'Foreman Rakesh Yadav',
+    members: 6,
+    status: 'Dispatched',
+    assignedIssueId: 1,
+    vehicleNumber: 'DL-1GB-4021',
+  },
+  {
+    id: 'crew-2',
+    name: 'Stormwater Grate & Drainage Squad A',
+    specialty: 'Open Grates & Suction Pumping',
+    leader: 'Suresh Chand',
+    members: 4,
+    status: 'On Site',
+    assignedIssueId: 3,
+    vehicleNumber: 'DL-3CD-9018',
+  },
+  {
+    id: 'crew-3',
+    name: 'Urban Lighting High-Boom Unit 4',
+    specialty: 'Street Lamp & Driver Replacement',
+    leader: 'Deepak Roy',
+    members: 3,
+    status: 'Available',
+    assignedIssueId: null,
+    vehicleNumber: 'DL-2LT-1102',
+  },
+  {
+    id: 'crew-4',
+    name: 'Footpath & Median Masonry Team C',
+    specialty: 'Concrete Paver Restoration',
+    leader: 'Mohan Lal',
+    members: 5,
+    status: 'Available',
+    assignedIssueId: null,
+    vehicleNumber: 'DL-4MS-7730',
+  },
+  {
+    id: 'crew-5',
+    name: 'Heavy Pothole Roller Unit B',
+    specialty: 'Bituminous Heavy Overlay',
+    leader: 'Gurpreet Singh',
+    members: 7,
+    status: 'Available',
+    assignedIssueId: null,
+    vehicleNumber: 'DL-1PR-5520',
+  },
+]
+
+// Initial notifications feed
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 1,
+    title: 'High Hazard Pothole Flagged',
+    message: 'AI camera detected severe 2.4ft road crater on MG Road Central Lane.',
+    time: '8 minutes ago',
+    type: 'urgent',
+    unread: true,
+    issueId: 1,
+  },
+  {
+    id: 2,
+    title: 'Dislodged Stormwater Grate',
+    message: 'Open drain hazardous condition reported near Karol Bagh market crossing.',
+    time: '24 minutes ago',
+    type: 'warning',
+    unread: true,
+    issueId: 3,
+  },
+  {
+    id: 3,
+    title: 'Street Lighting Fixture Restored',
+    message: 'Work order #4 closed by Urban Power Unit. High efficiency LED operational.',
+    time: '1 hour ago',
+    type: 'success',
+    unread: false,
+    issueId: 4,
+  },
+  {
+    id: 4,
+    title: 'Field Crew Dispatched',
+    message: 'Rapid Asphalt Patch Crew #1 en route to MG Road with bituminous hot mix.',
+    time: '2 hours ago',
+    type: 'info',
+    unread: false,
+    issueId: 1,
+  },
+]
 
 // Period datasets for dynamic stats switching
 const DATA_BY_PERIOD = {
@@ -52,68 +220,80 @@ const DATA_BY_PERIOD = {
       {
         id: 1,
         title: 'Large pothole on MG Road',
-        location: 'MG Road',
+        location: 'MG Road Corridor',
         category: 'Pothole',
         priority: 'High',
         status: 'In Progress',
         reportedOn: '12 Oct 2024',
         department: 'Public Works Department (PWD)',
         details: 'Deep pothole roughly 2 feet wide on the central lane causing vehicle congestion and rim damage.',
+        assignedCrew: 'Rapid Asphalt Patch Crew #1',
+        aiConfidence: 97.4,
       },
       {
         id: 2,
         title: 'Broken footpath',
-        location: 'Lajpat Nagar',
+        location: 'Lajpat Nagar Central',
         category: 'Footpath',
         priority: 'Medium',
         status: 'Pending',
         reportedOn: '12 Oct 2024',
         department: 'Municipal Corporation (South Zone)',
         details: 'Several interlocking concrete tiles fractured and missing near the main market crossing.',
+        assignedCrew: null,
+        aiConfidence: 91.2,
       },
       {
         id: 3,
         title: 'Open drain cover',
-        location: 'Karol Bagh',
+        location: 'Karol Bagh West',
         category: 'Open Drain',
         priority: 'High',
-        status: 'Verified',
+        status: 'In Progress',
         reportedOn: '11 Oct 2024',
         department: 'Water & Sewage Utility Authority',
         details: 'Cast iron stormwater grate shifted off collar; hazardous for night pedestrians and two-wheelers.',
+        assignedCrew: 'Stormwater Grate & Drainage Squad A',
+        aiConfidence: 98.6,
       },
       {
         id: 4,
         title: 'Damaged street light',
-        location: 'Connaught Place',
+        location: 'Connaught Place Circle',
         category: 'Street Light',
         priority: 'Low',
         status: 'Resolved',
         reportedOn: '10 Oct 2024',
         department: 'Department of Urban Power & Lighting',
         details: 'Internal lamp driver malfunction. Replaced with high-efficiency 90W LED fixture.',
+        assignedCrew: 'Urban Lighting High-Boom Unit 4',
+        aiConfidence: 94.0,
       },
       {
         id: 5,
         title: 'Water logging near underpass',
-        location: 'Saket Metro',
+        location: 'Saket Metro Underpass',
         category: 'Water Logging',
         priority: 'High',
         status: 'In Progress',
         reportedOn: '09 Oct 2024',
         department: 'Drainage & Stormwater Division',
         details: 'Debris blocking drainage sump resulting in 6 inches of standing stormwater.',
+        assignedCrew: null,
+        aiConfidence: 96.1,
       },
       {
         id: 6,
         title: 'Broken road divider',
-        location: 'Nehru Place',
+        location: 'Nehru Place Hub',
         category: 'Broken Road',
         priority: 'Medium',
         status: 'Pending',
         reportedOn: '08 Oct 2024',
         department: 'Road Safety & Traffic Engineering',
         details: 'Reinforced concrete curb knocked down by turning vehicle, obstructing inner lane.',
+        assignedCrew: null,
+        aiConfidence: 89.8,
       },
     ],
   },
@@ -146,46 +326,54 @@ const DATA_BY_PERIOD = {
       {
         id: 1,
         title: 'Large pothole on MG Road',
-        location: 'MG Road',
+        location: 'MG Road Corridor',
         category: 'Pothole',
         priority: 'High',
         status: 'In Progress',
         reportedOn: '12 Oct 2024',
         department: 'Public Works Department (PWD)',
         details: 'Deep pothole roughly 2 feet wide on central lane.',
+        assignedCrew: 'Rapid Asphalt Patch Crew #1',
+        aiConfidence: 97.4,
       },
       {
         id: 2,
         title: 'Broken footpath',
-        location: 'Lajpat Nagar',
+        location: 'Lajpat Nagar Central',
         category: 'Footpath',
         priority: 'Medium',
         status: 'Pending',
         reportedOn: '12 Oct 2024',
         department: 'Municipal Corporation (South Zone)',
         details: 'Tiles fractured near the main market crossing.',
+        assignedCrew: null,
+        aiConfidence: 91.2,
       },
       {
         id: 3,
         title: 'Open drain cover',
-        location: 'Karol Bagh',
+        location: 'Karol Bagh West',
         category: 'Open Drain',
         priority: 'High',
-        status: 'Verified',
+        status: 'In Progress',
         reportedOn: '11 Oct 2024',
         department: 'Water & Sewage Utility Authority',
         details: 'Cast iron cover dislodged after downpour.',
+        assignedCrew: 'Stormwater Grate & Drainage Squad A',
+        aiConfidence: 98.6,
       },
       {
         id: 4,
         title: 'Damaged street light',
-        location: 'Connaught Place',
+        location: 'Connaught Place Circle',
         category: 'Street Light',
         priority: 'Low',
         status: 'Resolved',
         reportedOn: '10 Oct 2024',
         department: 'Department of Urban Power & Lighting',
         details: 'LED bulb replaced on pole #42.',
+        assignedCrew: 'Urban Lighting High-Boom Unit 4',
+        aiConfidence: 94.0,
       },
     ],
   },
@@ -218,24 +406,28 @@ const DATA_BY_PERIOD = {
       {
         id: 1,
         title: 'Large pothole on MG Road',
-        location: 'MG Road',
+        location: 'MG Road Corridor',
         category: 'Pothole',
         priority: 'High',
         status: 'In Progress',
         reportedOn: 'Today, 09:30 AM',
         department: 'Public Works Department (PWD)',
         details: 'Emergency asphalt crew dispatched to site.',
+        assignedCrew: 'Rapid Asphalt Patch Crew #1',
+        aiConfidence: 97.4,
       },
       {
         id: 2,
         title: 'Broken footpath',
-        location: 'Lajpat Nagar',
+        location: 'Lajpat Nagar Central',
         category: 'Footpath',
         priority: 'Medium',
         status: 'Pending',
         reportedOn: 'Today, 08:15 AM',
-        department: 'Municipal Corporation',
+        department: 'Municipal Corporation (South Zone)',
         details: 'Pedestrian hazard flagged by neighborhood watch.',
+        assignedCrew: null,
+        aiConfidence: 91.2,
       },
     ],
   },
@@ -268,168 +460,101 @@ const DATA_BY_PERIOD = {
       {
         id: 1,
         title: 'Large pothole on MG Road',
-        location: 'MG Road',
+        location: 'MG Road Corridor',
         category: 'Pothole',
         priority: 'High',
         status: 'In Progress',
         reportedOn: '12 Oct 2024',
         department: 'Public Works Department (PWD)',
         details: 'Deep pothole reported by commuter app.',
+        assignedCrew: 'Rapid Asphalt Patch Crew #1',
+        aiConfidence: 97.4,
       },
       {
         id: 2,
         title: 'Broken footpath',
-        location: 'Lajpat Nagar',
+        location: 'Lajpat Nagar Central',
         category: 'Footpath',
         priority: 'Medium',
         status: 'Pending',
         reportedOn: '12 Oct 2024',
-        department: 'Municipal Corporation',
+        department: 'Municipal Corporation (South Zone)',
         details: 'Fractured paving tiles pending contractor review.',
+        assignedCrew: null,
+        aiConfidence: 91.2,
       },
       {
         id: 3,
         title: 'Open drain cover',
-        location: 'Karol Bagh',
+        location: 'Karol Bagh West',
         category: 'Open Drain',
         priority: 'High',
-        status: 'Verified',
+        status: 'In Progress',
         reportedOn: '11 Oct 2024',
-        department: 'Water & Sewage Board',
+        department: 'Water & Sewage Utility Authority',
         details: 'Temporary barrier placed before cover restoration.',
+        assignedCrew: 'Stormwater Grate & Drainage Squad A',
+        aiConfidence: 98.6,
       },
       {
         id: 4,
         title: 'Damaged street light',
-        location: 'Connaught Place',
+        location: 'Connaught Place Circle',
         category: 'Street Light',
         priority: 'Low',
         status: 'Resolved',
         reportedOn: '10 Oct 2024',
         department: 'Department of Urban Power & Lighting',
         details: 'Smart sensor LED lamp successfully installed.',
+        assignedCrew: 'Urban Lighting High-Boom Unit 4',
+        aiConfidence: 94.0,
       },
     ],
   },
 }
 
-// Hook for smooth numerical interpolation
-function useAnimatedCount(targetValue, duration = 650) {
-  const [displayValue, setDisplayValue] = useState(targetValue)
-
-  useEffect(() => {
-    let startTimestamp = null
-    const startValue = displayValue
-
-    const step = (timestamp) => {
-      if (!startTimestamp) startTimestamp = timestamp
-      const progress = Math.min((timestamp - startTimestamp) / duration, 1)
-      const easedProgress = 1 - Math.pow(1 - progress, 3)
-      const current = Math.round(startValue + (targetValue - startValue) * easedProgress)
-      setDisplayValue(current)
-
-      if (progress < 1) {
-        window.requestAnimationFrame(step)
-      }
-    }
-
-    const animId = window.requestAnimationFrame(step)
-    return () => window.cancelAnimationFrame(animId)
-  }, [targetValue, duration])
-
-  return displayValue
-}
-
-// KPI Summary Card
-function StatCard({ iconRenderer, label, value, trend, trendColor }) {
-  const animatedValue = useAnimatedCount(value)
-
-  return (
-    <div className="bg-white rounded-[18px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:shadow-md">
-      <div className="flex items-center gap-3">
-        {iconRenderer}
-        <span className="text-[13px] font-medium text-slate-500">{label}</span>
-      </div>
-
-      <div className="mt-3">
-        <div className="text-[29px] font-bold text-slate-800 tracking-tight leading-none">
-          {animatedValue.toLocaleString()}
-        </div>
-        <div className="mt-2.5 flex items-center">
-          <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded ${trendColor}`}>
-            <span className="mr-0.5">↑</span> {trend}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Donut Chart Component
-function DonutChart({ categories, hoveredCategory, setHoveredCategory, activeFilter, setActiveFilter }) {
-  const size = 185
-  const strokeWidth = 26
-  const radius = (size - strokeWidth) / 2
-  const center = size / 2
-  const circumference = 2 * Math.PI * radius
-
-  let accumulatedPercent = 0
-
-  return (
-    <div className="relative flex items-center justify-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="transparent"
-          stroke="#f1f5f9"
-          strokeWidth={strokeWidth}
-        />
-        {categories.map((cat) => {
-          const strokeDasharray = `${(cat.percentage / 100) * circumference} ${circumference}`
-          const strokeDashoffset = -((accumulatedPercent / 100) * circumference)
-          accumulatedPercent += cat.percentage
-
-          const isHovered = hoveredCategory === cat.name
-          const isFiltered = activeFilter === cat.name
-
-          return (
-            <circle
-              key={cat.name}
-              cx={center}
-              cy={center}
-              r={radius}
-              fill="transparent"
-              stroke={cat.color}
-              strokeWidth={isHovered || isFiltered ? strokeWidth + 4 : strokeWidth}
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={strokeDashoffset}
-              strokeLinecap="butt"
-              className="transition-all duration-300 cursor-pointer"
-              onMouseEnter={() => setHoveredCategory(cat.name)}
-              onMouseLeave={() => setHoveredCategory(null)}
-              onClick={() => setActiveFilter(activeFilter === cat.name ? null : cat.name)}
-            />
-          )
-        })}
-      </svg>
-    </div>
-  )
-}
-
 export default function AdminDashboard() {
+  const [isLoggedIn, setIsLoggedIn] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('Last 30 Days')
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
   const [activeNav, setActiveNav] = useState('Dashboard')
-  const [hoveredCategory, setHoveredCategory] = useState(null)
   const [categoryFilter, setCategoryFilter] = useState(null)
   const [priorityFilter, setPriorityFilter] = useState(null)
+  const [statusFilter, setStatusFilter] = useState(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [selectedReportForView, setSelectedReportForView] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Current dataset state
+  // Modals state
+  const [selectedReportForView, setSelectedReportForView] = useState(null)
+  const [newIssueModalOpen, setNewIssueModalOpen] = useState(false)
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false)
+
+  // Floating feedback toast
+  const [toast, setToast] = useState(null)
+
+  // Dataset states
   const [currentData, setCurrentData] = useState(DATA_BY_PERIOD['Last 30 Days'])
+  const [crews, setCrews] = useState(INITIAL_CREWS)
+  const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS)
+  const [settings, setSettings] = useState({
+    aiConfidenceThreshold: 85,
+    autoDispatchHighPriority: true,
+    emailAlerts: true,
+    smsEmergencyAlerts: false,
+    dailyDigest: true,
+    slaHighHours: 24,
+    slaMediumHours: 72,
+    slaLowDays: 7,
+    cityZone: 'Delhi Capital NCT Region',
+  })
+
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => {
+      setToast(null)
+    }, 3500)
+  }
 
   // Switch time period dynamically
   const handlePeriodChange = (period) => {
@@ -437,7 +562,9 @@ export default function AdminDashboard() {
     setCurrentData(JSON.parse(JSON.stringify(DATA_BY_PERIOD[period])))
     setCategoryFilter(null)
     setPriorityFilter(null)
+    setStatusFilter(null)
     setPeriodDropdownOpen(false)
+    showToast(`Timeframe updated to ${period}`, 'info')
   }
 
   // Status update function that shifts stats dynamically
@@ -471,16 +598,169 @@ export default function AdminDashboard() {
     if (selectedReportForView && selectedReportForView.id === reportId) {
       setSelectedReportForView((prev) => ({ ...prev, status: nextStatus }))
     }
+
+    showToast(`Incident #${reportId > 1000 ? String(reportId).slice(-4) : reportId} updated to ${nextStatus}`, 'success')
   }
 
-  // Filtered reports calculation
-  const filteredReports = useMemo(() => {
-    return currentData.reports.filter((r) => {
-      if (categoryFilter && r.category !== categoryFilter) return false
-      if (priorityFilter && r.priority !== priorityFilter) return false
-      return true
+  // Add new issue
+  const handleAddIssue = (newIssue) => {
+    setCurrentData((prev) => {
+      const updatedReports = [newIssue, ...prev.reports]
+      const updatedStats = {
+        ...prev.stats,
+        total: prev.stats.total + 1,
+        pending: prev.stats.pending + 1,
+      }
+      return {
+        ...prev,
+        stats: updatedStats,
+        reports: updatedReports,
+      }
     })
-  }, [currentData.reports, categoryFilter, priorityFilter])
+
+    // Also push a live notification
+    setNotifications((prev) => [
+      {
+        id: Date.now(),
+        title: `New Defect Logged: ${newIssue.title}`,
+        message: `${newIssue.priority} priority incident filed at ${newIssue.location}.`,
+        time: 'Just now',
+        type: newIssue.priority === 'High' ? 'urgent' : 'warning',
+        unread: true,
+        issueId: newIssue.id,
+      },
+      ...prev,
+    ])
+
+    showToast(`Logged new incident: "${newIssue.title}"`, 'success')
+  }
+
+  // Delete issue
+  const handleDeleteIssue = (issueId) => {
+    setCurrentData((prev) => {
+      const target = prev.reports.find((r) => r.id === issueId)
+      if (!target) return prev
+      const statsCopy = { ...prev.stats, total: Math.max(0, prev.stats.total - 1) }
+      if (target.status === 'Pending') statsCopy.pending = Math.max(0, statsCopy.pending - 1)
+      if (target.status === 'In Progress') statsCopy.inProgress = Math.max(0, statsCopy.inProgress - 1)
+      if (target.status === 'Resolved') statsCopy.resolved = Math.max(0, statsCopy.resolved - 1)
+
+      return {
+        ...prev,
+        stats: statsCopy,
+        reports: prev.reports.filter((r) => r.id !== issueId),
+      }
+    })
+
+    if (selectedReportForView && selectedReportForView.id === issueId) {
+      setSelectedReportForView(null)
+    }
+
+    showToast(`Incident #${issueId > 1000 ? String(issueId).slice(-4) : issueId} deleted`, 'info')
+  }
+
+  // Assign crew directly to issue
+  const handleAssignCrew = (issueId, crewName) => {
+    setCurrentData((prev) => ({
+      ...prev,
+      reports: prev.reports.map((r) =>
+        r.id === issueId ? { ...r, assignedCrew: crewName, status: 'In Progress' } : r
+      ),
+    }))
+
+    setCrews((prev) =>
+      prev.map((c) =>
+        c.name === crewName
+          ? { ...c, status: 'Dispatched', assignedIssueId: issueId }
+          : c
+      )
+    )
+
+    if (selectedReportForView && selectedReportForView.id === issueId) {
+      setSelectedReportForView((prev) => ({
+        ...prev,
+        assignedCrew: crewName,
+        status: 'In Progress',
+      }))
+    }
+
+    showToast(`Assigned ${crewName} to incident`, 'success')
+  }
+
+  // Dispatch crew from Assignments tab
+  const handleAssignCrewToIssue = (issueId, crewId) => {
+    const targetCrew = crews.find((c) => c.id === crewId)
+    if (!targetCrew) return
+
+    handleAssignCrew(issueId, targetCrew.name)
+  }
+
+  // Update crew status (e.g. Job complete or recall)
+  const handleUpdateCrewStatus = (crewId, newStatus) => {
+    setCrews((prev) =>
+      prev.map((c) =>
+        c.id === crewId
+          ? {
+              ...c,
+              status: newStatus,
+              assignedIssueId: newStatus === 'Available' ? null : c.assignedIssueId,
+            }
+          : c
+      )
+    )
+    showToast(`Crew status updated to ${newStatus}`, 'info')
+  }
+
+  // Refresh Telemetry button
+  const handleRefreshData = () => {
+    setIsRefreshing(true)
+    setTimeout(() => {
+      setIsRefreshing(false)
+      showToast('Live telemetry & AI feeds successfully synchronized', 'success')
+    }, 700)
+  }
+
+  // Notification handlers
+  const handleMarkAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
+    showToast('All notifications marked as read', 'success')
+  }
+
+  const handleToggleReadNotification = (id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, unread: !n.unread } : n))
+    )
+  }
+
+  const handleDeleteNotification = (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+    showToast('Notification dismissed', 'info')
+  }
+
+  const handleClearAllNotifications = () => {
+    setNotifications([])
+    showToast('Cleared all notifications', 'info')
+  }
+
+  // Navigation helpers from subtabs
+  const handleNavigateToDeptIssues = (deptName) => {
+    setActiveNav('All Issues')
+    showToast(`Filtering issues for ${deptName}`, 'info')
+  }
+
+  const handleDownloadDeptReport = (deptName) => {
+    showToast(`Generating audit report for ${deptName === 'all' ? 'All Departments' : deptName}`, 'success')
+  }
+
+  const handleExportAnalytics = () => {
+    showToast('Analytics summary exported to CSV', 'success')
+  }
+
+  // Unread notification badge
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((n) => n.unread).length,
+    [notifications]
+  )
 
   // Sidebar navigation entries matching reference image
   const navItems = [
@@ -491,9 +771,14 @@ export default function AdminDashboard() {
     { name: 'Departments', icon: Building2 },
     { name: 'Analytics', icon: TrendingUp },
     { name: 'Reports', icon: FileText },
-    { name: 'Notifications', icon: Bell },
+    { name: 'Notifications', icon: Bell, badge: unreadNotificationCount },
     { name: 'Settings', icon: Settings },
   ]
+
+  // If user is logged out, show clean login view
+  if (!isLoggedIn) {
+    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#f2f7f9] text-slate-800 font-sans overflow-hidden">
@@ -534,7 +819,7 @@ export default function AdminDashboard() {
             </span>
           </div>
 
-          {/* Navigation links */}
+          {/* Navigation links - ALL NOW FULLY WORKING! */}
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon
@@ -547,25 +832,32 @@ export default function AdminDashboard() {
                     setActiveNav(item.name)
                     setMobileMenuOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors text-left ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors text-left cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-[#0c6b82] to-[#0a5c70] text-white shadow-[0_2px_8px_rgba(12,107,130,0.4)]'
                       : 'text-slate-300 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Icon className={`w-[17px] h-[17px] ${isActive ? 'text-white' : 'text-slate-300'}`} />
-                  <span>{item.name}</span>
+                  <div className="flex items-center gap-3.5">
+                    <Icon className={`w-[17px] h-[17px] ${isActive ? 'text-white' : 'text-slate-300'}`} />
+                    <span>{item.name}</span>
+                  </div>
+                  {item.badge > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {item.badge}
+                    </span>
+                  )}
                 </button>
               )
             })}
           </nav>
         </div>
 
-        {/* Logout at bottom */}
+        {/* Logout at bottom - NOW FULLY WORKING! */}
         <div className="pt-3">
           <button
-            onClick={() => alert('Logout clicked')}
-            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
+            onClick={() => setLogoutModalOpen(true)}
+            className="w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
           >
             <LogOut className="w-[17px] h-[17px] text-slate-300" />
             <span>Logout</span>
@@ -576,10 +868,33 @@ export default function AdminDashboard() {
       {/* Main Content View */}
       <div className="flex-1 flex flex-col h-screen overflow-y-auto min-w-0">
         {/* Top page title bar */}
-        <div className="px-6 sm:px-8 pt-5 pb-1">
+        <div className="px-6 sm:px-8 pt-5 pb-1 flex items-center justify-between">
           <h2 className="text-xl font-bold text-[#0c3947] tracking-tight">
-            Government Dashboard - Overview
+            Government Dashboard - {activeNav}
           </h2>
+
+          <div className="flex items-center gap-2">
+            {/* Quick Refresh telemetry button */}
+            <button
+              onClick={handleRefreshData}
+              title="Refresh live camera & sensor telemetry"
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-cyan-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-cyan-600' : ''}`} />
+            </button>
+
+            {/* Quick Notifications jump button */}
+            <button
+              onClick={() => setActiveNav('Notifications')}
+              title="Notifications"
+              className="relative p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-cyan-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Header with Title and Filter Dropdown */}
@@ -587,443 +902,208 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="lg:hidden p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                {activeNav}
+              </h1>
               <p className="text-xs sm:text-[13px] text-slate-500 mt-0.5">
-                Real-time overview of road issues and actions
+                {activeNav === 'Dashboard' && 'Real-time overview of road issues and actions'}
+                {activeNav === 'All Issues' && 'Search, filter, update and manage reported road defects'}
+                {activeNav === 'Map View' && 'Geospatial mapping and live hazard GPS tracking'}
+                {activeNav === 'Assignments' && 'Dispatch maintenance squads and work orders'}
+                {activeNav === 'Departments' && 'Civic infrastructure bodies and SLA resolution performance'}
+                {activeNav === 'Analytics' && 'Machine learning detection insights and trends'}
+                {activeNav === 'Reports' && 'Civil infrastructure compliance and export sheets'}
+                {activeNav === 'Notifications' && 'Telemetry alerts and high-severity road warnings'}
+                {activeNav === 'Settings' && 'Autonomous platform and AI threshold configuration'}
               </p>
             </div>
           </div>
 
-          {/* Right action control: Clean Timeframe Dropdown matching screenshot */}
-          <div className="relative self-end sm:self-auto">
+          {/* Right action control: Clean Timeframe Dropdown */}
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
-              onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-              className="bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 shadow-xs flex items-center gap-2 hover:bg-slate-50 transition-colors"
+              onClick={() => setNewIssueModalOpen(true)}
+              className="bg-[#0c6b82] hover:bg-[#0a5c70] text-white rounded-xl px-3.5 py-1.5 text-xs sm:text-sm font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Calendar className="w-4 h-4 text-slate-500" />
-              <span>{selectedPeriod}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <Plus className="w-4 h-4" />
+              <span className="hidden xs:inline">Report Issue</span>
             </button>
 
-            {periodDropdownOpen && (
-              <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-30">
-                {Object.keys(DATA_BY_PERIOD).map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => handlePeriodChange(period)}
-                    className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm flex items-center justify-between hover:bg-slate-50 ${
-                      selectedPeriod === period ? 'text-cyan-800 font-semibold bg-cyan-50/60' : 'text-slate-600'
-                    }`}
-                  >
-                    <span>{period}</span>
-                    {selectedPeriod === period && <Check className="w-3.5 h-3.5 text-cyan-600" />}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="relative">
+              <button
+                onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
+                className="bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 shadow-xs flex items-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <Calendar className="w-4 h-4 text-slate-500" />
+                <span>{selectedPeriod}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {periodDropdownOpen && (
+                <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-30">
+                  {Object.keys(DATA_BY_PERIOD).map((period) => (
+                    <button
+                      key={period}
+                      onClick={() => handlePeriodChange(period)}
+                      className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
+                        selectedPeriod === period
+                          ? 'text-cyan-800 font-semibold bg-cyan-50/60'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      <span>{period}</span>
+                      {selectedPeriod === period && <Check className="w-3.5 h-3.5 text-cyan-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {/* Dashboard Content Cards */}
-        <main className="px-6 sm:px-8 pb-10 space-y-5">
-          {/* Top 4 KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Reports */}
-            <StatCard
-              iconRenderer={
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 fill-blue-500" viewBox="0 0 24 24">
-                    <path d="M4 4h7a2 2 0 0 1 2 2v1h-7a2 2 0 0 0-2 2v9H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm4 4h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zm4 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-6zm0 4a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-6z" />
-                  </svg>
-                </div>
-              }
-              label="Total Reports"
-              value={currentData.stats.total}
-              trend={currentData.stats.totalTrend}
-              trendColor="text-emerald-600 bg-emerald-50"
+        {/* Dashboard Content Container */}
+        <main className="px-6 sm:px-8 pb-10 flex-1">
+          {/* TAB 1: OVERVIEW DASHBOARD */}
+          {activeNav === 'Dashboard' && (
+            <OverviewTab
+              currentData={currentData}
+              categoryFilter={categoryFilter}
+              setCategoryFilter={setCategoryFilter}
+              priorityFilter={priorityFilter}
+              setPriorityFilter={setPriorityFilter}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              onOpenReportModal={setSelectedReportForView}
+              onOpenNewIssueModal={() => setNewIssueModalOpen(true)}
+              onNavigateToAllIssues={() => setActiveNav('All Issues')}
             />
+          )}
 
-            {/* Pending */}
-            <StatCard
-              iconRenderer={
-                <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-                  <div className="w-6 h-6 rounded-full border-2 border-amber-400 bg-amber-100/50 flex items-center justify-center text-[10px] font-bold text-amber-600">
-                    !
-                  </div>
-                </div>
-              }
-              label="Pending"
-              value={currentData.stats.pending}
-              trend={currentData.stats.pendingTrend}
-              trendColor="text-rose-500 bg-rose-50"
+          {/* TAB 2: ALL ISSUES */}
+          {activeNav === 'All Issues' && (
+            <AllIssuesTab
+              issues={currentData.reports}
+              onOpenReportModal={setSelectedReportForView}
+              onOpenNewIssueModal={() => setNewIssueModalOpen(true)}
+              onDeleteIssue={handleDeleteIssue}
+              onUpdateStatus={updateReportStatus}
+              onExportCSV={(count) => showToast(`Exported ${count} issues to CSV`, 'success')}
+              departments={departments}
+              categories={currentData.categories}
             />
+          )}
 
-            {/* In Progress */}
-            <StatCard
-              iconRenderer={
-                <div className="w-8 h-8 rounded-full bg-cyan-50 text-cyan-500 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-cyan-500" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-1-4.5a1.5 1.5 0 0 1-1.5-1.5V7a1.5 1.5 0 0 1 3 0v3.5A1.5 1.5 0 0 1 12 12z" />
-                  </svg>
-                </div>
-              }
-              label="In Progress"
-              value={currentData.stats.inProgress}
-              trend={currentData.stats.inProgressTrend}
-              trendColor="text-cyan-600 bg-cyan-50"
+          {/* TAB 3: MAP VIEW */}
+          {activeNav === 'Map View' && (
+            <MapViewTab
+              issues={currentData.reports}
+              onOpenReportModal={setSelectedReportForView}
+              onUpdateStatus={updateReportStatus}
+              onDispatchCrew={(issueId, crewName) => handleAssignCrew(issueId, crewName)}
+              categories={currentData.categories}
             />
+          )}
 
-            {/* Resolved */}
-            <StatCard
-              iconRenderer={
-                <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-500 fill-emerald-100" />
-                </div>
-              }
-              label="Resolved"
-              value={currentData.stats.resolved}
-              trend={currentData.stats.resolvedTrend}
-              trendColor="text-emerald-600 bg-emerald-50"
+          {/* TAB 4: ASSIGNMENTS */}
+          {activeNav === 'Assignments' && (
+            <AssignmentsTab
+              crews={crews}
+              issues={currentData.reports}
+              onUpdateCrewStatus={handleUpdateCrewStatus}
+              onAssignCrewToIssue={handleAssignCrewToIssue}
+              onOpenReportModal={setSelectedReportForView}
             />
-          </div>
+          )}
 
-          {/* Middle Two Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Issues by Category */}
-            <div className="bg-white rounded-[20px] p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[15px] font-bold text-slate-800">Issues by Category</h3>
-                {categoryFilter && (
-                  <button
-                    onClick={() => setCategoryFilter(null)}
-                    className="text-xs text-cyan-600 hover:text-cyan-800 font-semibold flex items-center gap-1"
-                  >
-                    Clear Filter ({categoryFilter}) ✕
-                  </button>
-                )}
-              </div>
+          {/* TAB 5: DEPARTMENTS */}
+          {activeNav === 'Departments' && (
+            <DepartmentsTab
+              departments={departments}
+              issues={currentData.reports}
+              onNavigateToDeptIssues={handleNavigateToDeptIssues}
+              onDownloadDeptReport={handleDownloadDeptReport}
+            />
+          )}
 
-              <div className="flex flex-col sm:flex-row items-center justify-around gap-6 my-auto">
-                {/* Donut chart */}
-                <div className="shrink-0">
-                  <DonutChart
-                    categories={currentData.categories}
-                    hoveredCategory={hoveredCategory}
-                    setHoveredCategory={setHoveredCategory}
-                    activeFilter={categoryFilter}
-                    setActiveFilter={setCategoryFilter}
-                  />
-                </div>
+          {/* TAB 6: ANALYTICS */}
+          {activeNav === 'Analytics' && (
+            <AnalyticsTab
+              issues={currentData.reports}
+              onExportAnalytics={handleExportAnalytics}
+            />
+          )}
 
-                {/* Legend List */}
-                <div className="w-full sm:w-[220px] space-y-1.5">
-                  {currentData.categories.map((cat) => {
-                    const isSelected = categoryFilter === cat.name
-                    const isHovered = hoveredCategory === cat.name
+          {/* TAB 7: REPORTS */}
+          {activeNav === 'Reports' && (
+            <ReportsTab
+              issues={currentData.reports}
+              departments={departments}
+              onTriggerToast={showToast}
+            />
+          )}
 
-                    return (
-                      <div
-                        key={cat.name}
-                        onClick={() => setCategoryFilter(isSelected ? null : cat.name)}
-                        onMouseEnter={() => setHoveredCategory(cat.name)}
-                        onMouseLeave={() => setHoveredCategory(null)}
-                        className={`flex items-center justify-between text-xs py-1 px-2 rounded-lg cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-cyan-50 font-bold'
-                            : isHovered
-                            ? 'bg-slate-50'
-                            : 'hover:bg-slate-50/70'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: cat.color }}
-                          />
-                          <span className={`${isSelected ? 'text-cyan-900' : 'text-slate-600 font-medium'}`}>
-                            {cat.name}
-                          </span>
-                        </div>
-                        <span className="font-semibold text-slate-800">{cat.percentage}%</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+          {/* TAB 8: NOTIFICATIONS */}
+          {activeNav === 'Notifications' && (
+            <NotificationsTab
+              notifications={notifications}
+              onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+              onClearAll={handleClearAllNotifications}
+              onToggleRead={handleToggleReadNotification}
+              onDeleteNotification={handleDeleteNotification}
+              onOpenReportModal={setSelectedReportForView}
+              issues={currentData.reports}
+            />
+          )}
 
-            {/* Priority-wise Issues */}
-            <div className="bg-white rounded-[20px] p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[15px] font-bold text-slate-800">Priority-wise Issues</h3>
-                {priorityFilter && (
-                  <button
-                    onClick={() => setPriorityFilter(null)}
-                    className="text-xs text-cyan-600 hover:text-cyan-800 font-semibold flex items-center gap-1"
-                  >
-                    Clear Filter ({priorityFilter}) ✕
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-5 my-auto py-2">
-                {currentData.priorities.map((item) => {
-                  const isSelected = priorityFilter === item.name
-
-                  return (
-                    <div
-                      key={item.name}
-                      onClick={() => setPriorityFilter(isSelected ? null : item.name)}
-                      className={`cursor-pointer p-1.5 rounded-xl transition-all ${
-                        isSelected ? 'bg-slate-50 ring-1 ring-slate-300' : 'hover:bg-slate-50/50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <span className="w-14 text-xs sm:text-[13px] font-medium text-slate-600">
-                          {item.name}
-                        </span>
-
-                        {/* Progress Bar Container: clean bar with count only on right */}
-                        <div className="flex-1 bg-slate-100 rounded-lg h-7 relative flex items-center overflow-hidden">
-                          <div
-                            className="h-full rounded-lg transition-all duration-700 ease-out"
-                            style={{
-                              backgroundColor: item.color,
-                              width: `${item.percentWidth}%`,
-                            }}
-                          />
-
-                          {/* Number on right side only */}
-                          <span className="absolute right-3 text-xs font-bold text-slate-700">
-                            {item.count.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="pt-2 text-[11px] text-slate-400 text-right">
-                Filter table by clicking priority levels
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Table: Recent Reports */}
-          <div className="bg-white rounded-[20px] p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100">
-            <div className="flex items-center justify-between pb-4">
-              <div>
-                <h3 className="text-[15px] font-bold text-slate-800">Recent Reports</h3>
-                {(categoryFilter || priorityFilter) && (
-                  <p className="text-xs text-cyan-600 mt-0.5">
-                    Active Filters:{' '}
-                    {categoryFilter && <span className="font-semibold mr-2">{categoryFilter}</span>}
-                    {priorityFilter && <span className="font-semibold">{priorityFilter}</span>}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-[13px]">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-semibold text-[11px]">
-                    <th className="pb-3 px-3.5 font-semibold">#</th>
-                    <th className="pb-3 px-3.5 font-semibold">Title</th>
-                    <th className="pb-3 px-3.5 font-semibold">Location</th>
-                    <th className="pb-3 px-3.5 font-semibold">Category</th>
-                    <th className="pb-3 px-3.5 font-semibold">Priority</th>
-                    <th className="pb-3 px-3.5 font-semibold">Status</th>
-                    <th className="pb-3 px-3.5 font-semibold">Reported On</th>
-                    <th className="pb-3 px-3.5 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100/70">
-                  {filteredReports.length === 0 ? (
-                    <tr>
-                      <td colSpan="8" className="text-center py-7 text-slate-400 text-xs">
-                        No records found matching filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredReports.map((report, idx) => (
-                      <tr
-                        key={report.id}
-                        className="hover:bg-slate-50/60 transition-colors text-slate-700"
-                      >
-                        <td className="py-3.5 px-3.5 font-medium text-slate-400">{idx + 1}</td>
-                        <td className="py-3.5 px-3.5 font-medium text-slate-800">{report.title}</td>
-                        <td className="py-3.5 px-3.5 text-slate-600">{report.location}</td>
-                        <td className="py-3.5 px-3.5 text-slate-600">{report.category}</td>
-
-                        {/* Priority Badge */}
-                        <td className="py-3.5 px-3.5">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                              report.priority === 'High'
-                                ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                : report.priority === 'Medium'
-                                ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                            }`}
-                          >
-                            {report.priority}
-                          </span>
-                        </td>
-
-                        {/* Status Badge */}
-                        <td className="py-3.5 px-3.5">
-                          <span
-                            className={`inline-block px-3 py-0.5 rounded-full text-xs font-semibold ${
-                              report.status === 'In Progress'
-                                ? 'bg-slate-100 text-slate-700'
-                                : report.status === 'Pending'
-                                ? 'bg-rose-50 text-rose-600'
-                                : report.status === 'Verified'
-                                ? 'bg-cyan-50 text-cyan-700'
-                                : 'bg-emerald-50 text-emerald-700'
-                            }`}
-                          >
-                            {report.status}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-3.5 text-slate-500 whitespace-nowrap">
-                          {report.reportedOn}
-                        </td>
-
-                        {/* Action View Button */}
-                        <td className="py-3.5 px-3.5 text-right">
-                          <button
-                            onClick={() => setSelectedReportForView(report)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-1 rounded-lg text-xs font-medium transition-colors"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* TAB 9: SETTINGS */}
+          {activeNav === 'Settings' && (
+            <SettingsTab
+              settings={settings}
+              onSaveSettings={(newSettings) => setSettings(newSettings)}
+              onTriggerToast={showToast}
+            />
+          )}
         </main>
       </div>
 
       {/* Detail Dialog Modal */}
       {selectedReportForView && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200/80">
-            <div className="flex items-start justify-between pb-3.5 border-b border-slate-100">
-              <div>
-                <span className="text-xs font-semibold text-cyan-700 uppercase tracking-wider">
-                  Incident #{selectedReportForView.id}
-                </span>
-                <h3 className="text-lg font-bold text-slate-800 mt-0.5">
-                  {selectedReportForView.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedReportForView(null)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-4 space-y-4 text-xs sm:text-sm">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl">
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Location</span>
-                  <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3.5 h-3.5 text-cyan-600" />
-                    {selectedReportForView.location}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Category</span>
-                  <span className="font-semibold text-slate-700 mt-0.5 block">
-                    {selectedReportForView.category}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Priority</span>
-                  <span
-                    className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      selectedReportForView.priority === 'High'
-                        ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                        : selectedReportForView.priority === 'Medium'
-                        ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                        : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                    }`}
-                  >
-                    {selectedReportForView.priority}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Reported Date</span>
-                  <span className="font-semibold text-slate-700 mt-0.5 block">
-                    {selectedReportForView.reportedOn}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-slate-400 block text-[11px] mb-1">Assigned Department</span>
-                <p className="text-slate-700 font-medium bg-white border border-slate-200 rounded-lg p-2.5">
-                  {selectedReportForView.department || 'Urban Infrastructure Taskforce'}
-                </p>
-              </div>
-
-              <div>
-                <span className="text-slate-400 block text-[11px] mb-1">Issue Details</span>
-                <p className="text-slate-600 bg-slate-50 p-3 rounded-lg leading-relaxed">
-                  {selectedReportForView.details}
-                </p>
-              </div>
-
-              {/* Status Update with real-time dynamic stats feedback */}
-              <div className="pt-2">
-                <span className="text-slate-600 block text-xs font-semibold mb-2">
-                  Update Status (Dynamically updates KPI cards):
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {['Pending', 'In Progress', 'Resolved'].map((st) => (
-                    <button
-                      key={st}
-                      onClick={() => updateReportStatus(selectedReportForView.id, st)}
-                      className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                        selectedReportForView.status === st
-                          ? 'bg-cyan-700 text-white border-cyan-700 shadow-sm'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setSelectedReportForView(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <IssueDetailModal
+          report={selectedReportForView}
+          onClose={() => setSelectedReportForView(null)}
+          onUpdateStatus={updateReportStatus}
+          onDeleteIssue={handleDeleteIssue}
+          onAssignCrew={handleAssignCrew}
+          crews={crews}
+        />
       )}
+
+      {/* New Issue Dialog Modal */}
+      <NewIssueModal
+        isOpen={newIssueModalOpen}
+        onClose={() => setNewIssueModalOpen(false)}
+        onAddIssue={handleAddIssue}
+        departments={departments}
+        categories={currentData.categories}
+      />
+
+      {/* Logout Confirmation Dialog Modal */}
+      <LogoutModal
+        isOpen={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+        onConfirm={() => {
+          setLogoutModalOpen(false)
+          setIsLoggedIn(false)
+        }}
+      />
+
+      {/* Toast Feedback Banner */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   )
 }
