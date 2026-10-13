@@ -1,15 +1,15 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { LogIn } from 'lucide-react'
+import { LogIn, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginScreen({ onLogin, onBack }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login } = useAuth()
+  const { login, isLoading } = useAuth()
   const [email, setEmail] = useState('admin@urban-intelligence.gov.in')
-  const [password, setPassword] = useState('••••••••••••')
-  const [isLoading, setIsLoading] = useState(false)
+  const [password, setPassword] = useState('admin123')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const handleBack = () => {
     if (onBack) {
@@ -19,22 +19,34 @@ export default function LoginScreen({ onLogin, onBack }) {
     }
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    setIsLoading(true)
-    setTimeout(() => {
-      setIsLoading(false)
-      login({
-        email,
-        name: 'Municipal Administrator',
-        role: 'admin',
-      })
+    setErrorMessage('')
+
+    if (!email.trim()) {
+      setErrorMessage('Officer email is required.')
+      return
+    }
+    if (!password) {
+      setErrorMessage('Access key / password is required.')
+      return
+    }
+
+    const result = await login({
+      email: email.trim(),
+      password,
+      roleHint: 'admin'
+    })
+
+    if (result.success) {
       if (onLogin) {
         onLogin()
       }
       const destination = location.state?.from?.pathname || '/admin'
       navigate(destination, { replace: true })
-    }, 600)
+    } else {
+      setErrorMessage(result.message || 'Authentication failed. Please verify credentials.')
+    }
   }
 
   return (
@@ -66,6 +78,13 @@ export default function LoginScreen({ onLogin, onBack }) {
           </p>
         </div>
 
+        {errorMessage && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700 flex items-start gap-2" role="alert">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
             <label className="block text-slate-700 font-semibold mb-1 text-xs">
@@ -74,8 +93,11 @@ export default function LoginScreen({ onLogin, onBack }) {
             <input
               type="email"
               value={email}
+              autoComplete="username"
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. admin@urban-intelligence.gov.in"
               className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600"
+              required
             />
           </div>
 
@@ -86,22 +108,25 @@ export default function LoginScreen({ onLogin, onBack }) {
             <input
               type="password"
               value={password}
+              autoComplete="current-password"
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter admin password"
               className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600"
+              required
             />
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 px-4 bg-[#0c6b82] hover:bg-[#0a5c70] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+            className="w-full py-3 px-4 bg-[#0c6b82] hover:bg-[#0a5c70] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-75 cursor-pointer"
           >
             {isLoading ? (
               <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <LogIn className="w-4 h-4" />
             )}
-            <span>{isLoading ? 'Authenticating...' : 'Sign In as Municipal Administrator'}</span>
+            <span>{isLoading ? 'Verifying with Backend...' : 'Sign In as Municipal Administrator'}</span>
           </button>
         </form>
 

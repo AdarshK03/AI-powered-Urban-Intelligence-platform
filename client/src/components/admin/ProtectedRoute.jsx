@@ -15,3 +15,4 @@ export default function ProtectedRoute({ children, requiredRole = 'admin', redir
 
   return children ? children : null;
 }
+
