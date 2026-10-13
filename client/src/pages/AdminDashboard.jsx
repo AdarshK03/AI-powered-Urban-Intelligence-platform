@@ -22,20 +22,23 @@ import {
   Plus,
 } from 'lucide-react'
 
-import Toast from './components/Toast'
-import NewIssueModal from './components/NewIssueModal'
-import IssueDetailModal from './components/IssueDetailModal'
-import LogoutModal from './components/LogoutModal'
-import LoginScreen from './components/LoginScreen'
-import OverviewTab from './components/OverviewTab'
-import AllIssuesTab from './components/AllIssuesTab'
-import MapViewTab from './components/MapViewTab'
-import AssignmentsTab from './components/AssignmentsTab'
-import DepartmentsTab from './components/DepartmentsTab'
-import AnalyticsTab from './components/AnalyticsTab'
-import ReportsTab from './components/ReportsTab'
-import NotificationsTab from './components/NotificationsTab'
-import SettingsTab from './components/SettingsTab'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+
+import Toast from '../components/admin/Toast'
+import NewIssueModal from '../components/admin/NewIssueModal'
+import IssueDetailModal from '../components/admin/IssueDetailModal'
+import LogoutModal from '../components/admin/LogoutModal'
+import LoginScreen from './LoginScreen'
+import OverviewTab from '../components/admin/OverviewTab'
+import AllIssuesTab from '../components/admin/AllIssuesTab'
+import MapViewTab from '../components/admin/MapViewTab'
+import AssignmentsTab from '../components/admin/AssignmentsTab'
+import DepartmentsTab from '../components/admin/DepartmentsTab'
+import AnalyticsTab from '../components/admin/AnalyticsTab'
+import ReportsTab from '../components/admin/ReportsTab'
+import NotificationsTab from '../components/admin/NotificationsTab'
+import SettingsTab from '../components/admin/SettingsTab'
 
 // Initial municipal departments dataset
 const INITIAL_DEPARTMENTS = [
@@ -513,7 +516,9 @@ const DATA_BY_PERIOD = {
   },
 }
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ onExit } = {}) {
+  const navigate = useNavigate()
+  const { logout } = useAuth()
   const [isLoggedIn, setIsLoggedIn] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('Last 30 Days')
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
@@ -777,7 +782,7 @@ export default function AdminDashboard() {
 
   // If user is logged out, show clean login view
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />
+    return <LoginScreen onLogin={() => setIsLoggedIn(true)} onBack={onExit} />
   }
 
   return (
@@ -1099,6 +1104,9 @@ export default function AdminDashboard() {
         onConfirm={() => {
           setLogoutModalOpen(false)
           setIsLoggedIn(false)
+          logout()
+          if (onExit) onExit()
+          navigate('/admin/login')
         }}
       />
 

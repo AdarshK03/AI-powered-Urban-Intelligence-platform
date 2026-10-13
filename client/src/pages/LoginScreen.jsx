@@ -1,17 +1,39 @@
 import React, { useState } from 'react'
-import { LogIn, Shield, CheckCircle2 } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { LogIn } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, onBack }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { login } = useAuth()
   const [email, setEmail] = useState('admin@urban-intelligence.gov.in')
   const [password, setPassword] = useState('••••••••••••')
   const [isLoading, setIsLoading] = useState(false)
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack()
+    } else {
+      navigate('/login')
+    }
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setIsLoading(true)
     setTimeout(() => {
       setIsLoading(false)
-      onLogin()
+      login({
+        email,
+        name: 'Municipal Administrator',
+        role: 'admin',
+      })
+      if (onLogin) {
+        onLogin()
+      }
+      const destination = location.state?.from?.pathname || '/admin'
+      navigate(destination, { replace: true })
     }, 600)
   }
 
@@ -33,7 +55,7 @@ export default function LoginScreen({ onLogin }) {
               strokeLinejoin="round"
             >
               <circle cx="12" cy="12" r="10" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
               <path d="M2 12h20" />
             </svg>
           </div>
@@ -83,10 +105,17 @@ export default function LoginScreen({ onLogin }) {
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-          <span className="text-[11px] text-slate-400">
+        <div className="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
+          <span className="text-[11px] text-slate-400 block">
             Authorized Personnel Only • GovTech Urban Systems
           </span>
+          <button
+            type="button"
+            onClick={handleBack}
+            className="text-xs text-cyan-700 hover:text-cyan-800 font-medium cursor-pointer"
+          >
+            ← Back to Citizen Portal
+          </button>
         </div>
       </div>
     </div>

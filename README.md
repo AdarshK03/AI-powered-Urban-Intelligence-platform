@@ -1,16 +1,77 @@
-# React + Vite
+# AI-powered Urban Intelligence Platform (UIP)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+An AI-powered urban civic management and intelligence platform designed to streamline issue tracking, department assignment, predictive resource allocation, and citizen engagement.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📁 Repository Structure
 
-## React Compiler
+```text
+AI-powered-UIP/
+├── client/                     # React Frontend application (Vite, React 19, Tailwind CSS v4)
+│   ├── public/                 # Static assets
+│   ├── src/                    # Application source code
+│   │   ├── assets/             # SVGs, icons, illustrations
+│   │   ├── components/         # Reusable modular components
+│   │   │   ├── admin/          # Admin dashboard tabs, modals, and route guards
+│   │   │   │   ├── AllIssuesTab.jsx
+│   │   │   │   ├── AnalyticsTab.jsx
+│   │   │   │   ├── AssignmentsTab.jsx
+│   │   │   │   ├── DepartmentsTab.jsx
+│   │   │   │   ├── IssueDetailModal.jsx
+│   │   │   │   ├── LogoutModal.jsx
+│   │   │   │   ├── MapViewTab.jsx
+│   │   │   │   ├── NewIssueModal.jsx
+│   │   │   │   ├── NotificationsTab.jsx
+│   │   │   │   ├── OverviewTab.jsx
+│   │   │   │   ├── ProtectedRoute.jsx
+│   │   │   │   ├── ReportsTab.jsx
+│   │   │   │   ├── SettingsTab.jsx
+│   │   │   │   └── Toast.jsx
+│   │   │   └── public/         # Public pages layout and components
+│   │   │       ├── CitizenLayout.jsx
+│   │   │       └── Placeholder.jsx
+│   │   ├── pages/              # Top-level screen and page views
+│   │   │   ├── AdminDashboard.jsx
+│   │   │   ├── LoginPanel.jsx
+│   │   │   ├── LoginScreen.jsx
+│   │   │   ├── OnboardingPanel.jsx
+│   │   │   └── SignUpPanel.jsx
+│   │   ├── App.jsx             # Root layout & page switcher
+│   │   ├── index.css           # Design system tokens and Tailwind CSS rules
+│   │   └── main.jsx            # React root DOM renderer
+│   ├── index.html              # HTML entry point
+│   ├── package.json            # Client dependencies and npm scripts
+│   └── vite.config.js          # Vite and Tailwind CSS plugins configuration
+└── README.md                   # Project overview and documentation
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 🚀 Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Prerequisites
+- Node.js (v18+ recommended)
+- npm or yarn
+
+### Running the Frontend (`client`)
+
+1. Change directory to the client:
+   ```bash
+   cd client
+   ```
+
+2. Start the Vite development server:
+   ```bash
+   npm run dev
+   ```
+
+3. Build for production:
+   ```bash
+   npm run build
+   ```
+
+4. Run linter:
+   ```bash
+   npm run lint
+   ```
