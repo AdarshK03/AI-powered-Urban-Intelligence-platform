@@ -73,3 +73,9 @@ input.invalid { border-color: #DC2626; }
   .card { min-height: auto; padding: 24px 18px; }
 }
  
+.citizen-app label,
+.citizen-app input,
+.citizen-app textarea,
+.citizen-app select {
+  all: revert-layer;
+}

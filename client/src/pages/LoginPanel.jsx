@@ -89,6 +89,11 @@ export default function LoginPanel({ onBack: externalBack, onSignUp: externalSig
         setTimeout(() => {
           navigate('/admin');
         }, 800);
+      } else {
+        // Citizens go to their home screen
+        setTimeout(() => {
+          navigate('/citizen');
+        }, 800);
       }
     } else {
       setErrorMessage(result.message || 'Login failed.');
@@ -135,7 +140,7 @@ export default function LoginPanel({ onBack: externalBack, onSignUp: externalSig
             ) : (
               <button
                 type="button"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/citizen')}
                 className="w-full h-11 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer"
               >
                 Return to Citizen Portal

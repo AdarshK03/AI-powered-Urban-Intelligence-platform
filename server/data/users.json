@@ -43,5 +43,23 @@
     "role": "citizen",
     "organisation": "Civic Participant",
     "createdAt": "2026-10-13T06:00:20.068Z"
+  },
+  {
+    "id": "usr_1791885387039_qqgas",
+    "name": "Tushar vikas kamble",
+    "email": "31231036@vupune.ac.in",
+    "passwordHash": "$2a$10$Z0iXWjAQNiru5MxYCUk9R.X3kLbYddvXgpM29O9YC2lmd2C7xNBTq",
+    "role": "citizen",
+    "organisation": "Vishwakarma",
+    "createdAt": "2026-10-13T09:56:27.041Z"
+  },
+  {
+    "id": "usr_1791886861328_g4w28",
+    "name": "1234mmunity (optional) tushar kamble Password",
+    "email": "tk9322963900@gmail.com",
+    "passwordHash": "$2a$10$lSIZeINLw3ON8Ki5jDsUr.zO0HrFJRQvGalKUdPSF4qBLRKLVAP8C",
+    "role": "citizen",
+    "organisation": "tushar kamble",
+    "createdAt": "2026-10-13T10:21:01.328Z"
   }
 ]

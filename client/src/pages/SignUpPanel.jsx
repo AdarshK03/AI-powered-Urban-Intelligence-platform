@@ -77,7 +77,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
         if (result.user.role === 'admin') {
           navigate('/admin');
         } else {
-          navigate('/login');
+          navigate('/citizen');
         }
       }, 1000);
     } else {
