@@ -31,47 +31,101 @@ AI-powered-UIP/
 │   │   │   └── public/         # Public pages layout and components
 │   │   │       ├── CitizenLayout.jsx
 │   │   │       └── Placeholder.jsx
+│   │   ├── context/            # React Context stores
+│   │   │   └── AuthContext.jsx # Backend-connected auth provider with localStorage sync
 │   │   ├── pages/              # Top-level screen and page views
 │   │   │   ├── AdminDashboard.jsx
-│   │   │   ├── LoginPanel.jsx
-│   │   │   ├── LoginScreen.jsx
+│   │   │   ├── LoginPanel.jsx   # Citizen & general email/password login
+│   │   │   ├── LoginScreen.jsx  # Municipal administrator login
 │   │   │   ├── OnboardingPanel.jsx
-│   │   │   └── SignUpPanel.jsx
+│   │   │   └── SignUpPanel.jsx  # Real user registration connected to backend
 │   │   ├── App.jsx             # Root layout & page switcher
 │   │   ├── index.css           # Design system tokens and Tailwind CSS rules
 │   │   └── main.jsx            # React root DOM renderer
 │   ├── index.html              # HTML entry point
 │   ├── package.json            # Client dependencies and npm scripts
-│   └── vite.config.js          # Vite and Tailwind CSS plugins configuration
+│   └── vite.config.js          # Vite config with backend API proxy (/api -> localhost:5000)
+├── server/                     # Node.js Express Authentication Backend
+│   ├── controllers/            # Route controllers
+│   │   └── authController.js   # Login, registration, profile, and logout
+│   ├── data/                   # Persistent user storage and seed accounts
+│   │   ├── users.js            # User retrieval, bcrypt hashing, and sanitization
+│   │   └── users.json          # File persistence store for registered users
+│   ├── middleware/             # Express middlewares
+│   │   └── authMiddleware.js   # JWT authentication & role authorization guards
+│   ├── routes/                 # API routes
+│   │   └── authRoutes.js       # /api/auth routes
+│   ├── .env                    # Server environment configuration
+│   ├── package.json            # Backend dependencies (express, bcryptjs, jsonwebtoken, cors)
+│   └── server.js               # Express application entrypoint
+├── package.json                # Workspace root runner scripts
 └── README.md                   # Project overview and documentation
 ```
+
+---
+
+## 🔐 Authentication System
+
+The platform features a complete **Node.js / Express** authentication flow connected directly to the React frontend:
+
+- **Email & Password Authentication**: Pure email and password login flow with validation shifted to the backend.
+- **Password Security**: Passwords hashed with `bcryptjs`.
+- **JWT Tokens**: Secure JSON Web Tokens issued on login and registration (`Bearer <token>`).
+- **Session & Credentials Caching**: Active JWT token, user object, and last-used credentials stored in `localStorage` (`uip_token`, `uip_user`, `uip_credentials`).
+- **Protected Routes**: Access to `/admin` is guarded by role-based authorization checking (`role === 'admin'`).
+- **Proxy Configuration**: Frontend Vite dev server proxies `/api` calls to `http://localhost:5000`.
+
+### Pre-configured Test Accounts
+
+| Role | Email | Password | Access Level |
+| :--- | :--- | :--- | :--- |
+| **Municipal Administrator** | `admin@urban-intelligence.gov.in` | `admin123` | Municipal Admin Console (`/admin`) |
+| **Citizen** | `citizen@urban-intelligence.in` | `citizen123` | Citizen Portal |
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/health` | Service health and uptime | No |
+| `POST` | `/api/auth/login` | Authenticate with email & password | No |
+| `POST` | `/api/auth/register` | Register new citizen or officer account | No |
+| `GET` | `/api/auth/me` | Fetch authenticated user profile | Yes (`Bearer <token>`) |
+| `POST` | `/api/auth/logout` | End session | No |
+| `GET` | `/api/auth/users` | List registered accounts | Yes (`admin` only) |
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+ recommended)
+- Node.js (v18+ recommended, v24 supported)
 - npm or yarn
 
-### Running the Frontend (`client`)
+### 1. Install Dependencies
+Run the following from the root directory to install both client and server packages:
+```bash
+npm run install:all
+```
 
-1. Change directory to the client:
-   ```bash
-   cd client
-   ```
+Or install them individually:
+```bash
+cd server && npm install
+cd ../client && npm install
+```
 
-2. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
+### 2. Start the Backend Server (`server`)
+```bash
+npm run server
+# or: cd server && npm run dev
+```
+The server will start on `http://localhost:5000`.
 
-3. Build for production:
-   ```bash
-   npm run build
-   ```
-
-4. Run linter:
-   ```bash
-   npm run lint
-   ```
+### 3. Start the Frontend Application (`client`)
+In a new terminal:
+```bash
+npm run client
+# or: cd client && npm run dev
+```
+The client will start on `http://localhost:5173`.

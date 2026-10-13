@@ -1,0 +1,47 @@
+[
+  {
+    "id": "usr_admin_001",
+    "name": "Municipal Administrator",
+    "email": "admin@urban-intelligence.gov.in",
+    "passwordHash": "$2a$10$ERCynhLLvxd5YEGV10hT3O3JtCSds2ic6zNXBdWje2zhKu3tnWS7m",
+    "role": "admin",
+    "organisation": "Municipal Road Infrastructure Administration",
+    "createdAt": "2026-10-13T05:31:14.617Z"
+  },
+  {
+    "id": "usr_citizen_001",
+    "name": "Priya Sharma",
+    "email": "citizen@urban-intelligence.in",
+    "passwordHash": "$2a$10$upkkaKhiPH6.X4Dax3EeHeO9iT4wDYykLDaFIkeXx/regfdXrd3Qq",
+    "role": "citizen",
+    "organisation": "Civic Resident Association",
+    "createdAt": "2026-10-13T05:31:14.669Z"
+  },
+  {
+    "id": "usr_1791869595410_wt9ol",
+    "name": "Rohan Verma",
+    "email": "rohan@example.com",
+    "passwordHash": "$2a$10$vimB8kYG7w9jpRfVoQD.Q.ZQIAKm72Qry5m/LIzdZInK3mKgPgjD6",
+    "role": "citizen",
+    "organisation": "Citizen Safety",
+    "createdAt": "2026-10-13T05:33:15.410Z"
+  },
+  {
+    "id": "usr_1791869820299_1q56u",
+    "name": "Vikram Singh",
+    "email": "vikram@delhi-roads.org",
+    "passwordHash": "$2a$10$.kRexMCzXHSRlk6l.it0AuNPcaazFY5ikyPDb9zud7FjMBiZrXl7G",
+    "role": "citizen",
+    "organisation": "Delhi Road Safety NGO",
+    "createdAt": "2026-10-13T05:37:00.299Z"
+  },
+  {
+    "id": "usr_1791871220068_9v7vr",
+    "name": "adarsh",
+    "email": "adarsh@gmail.com",
+    "passwordHash": "$2a$10$UcOh5LaRuHACGRSBauNj6Ol1.dDeWfabq4Sp1BSn5s2BkGPB0NVhq",
+    "role": "citizen",
+    "organisation": "Civic Participant",
+    "createdAt": "2026-10-13T06:00:20.068Z"
+  }
+]
