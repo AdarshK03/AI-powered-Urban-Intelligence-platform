@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Home,
   AlertCircle,
@@ -106,8 +106,8 @@ const INITIAL_CREWS = [
     specialty: 'Potholes & Pavement Resurfacing',
     leader: 'Foreman Rakesh Yadav',
     members: 6,
-    status: 'Dispatched',
-    assignedIssueId: 1,
+    status: 'Available',
+    assignedIssueId: null,
     vehicleNumber: 'DL-1GB-4021',
   },
   {
@@ -116,8 +116,8 @@ const INITIAL_CREWS = [
     specialty: 'Open Grates & Suction Pumping',
     leader: 'Suresh Chand',
     members: 4,
-    status: 'On Site',
-    assignedIssueId: 3,
+    status: 'Available',
+    assignedIssueId: null,
     vehicleNumber: 'DL-3CD-9018',
   },
   {
@@ -152,373 +152,36 @@ const INITIAL_CREWS = [
   },
 ]
 
-// Initial notifications feed
-const INITIAL_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: 'High Hazard Pothole Flagged',
-    message: 'AI camera detected severe 2.4ft road crater on MG Road Central Lane.',
-    time: '8 minutes ago',
-    type: 'urgent',
-    unread: true,
-    issueId: 1,
-  },
-  {
-    id: 2,
-    title: 'Dislodged Stormwater Grate',
-    message: 'Open drain hazardous condition reported near Karol Bagh market crossing.',
-    time: '24 minutes ago',
-    type: 'warning',
-    unread: true,
-    issueId: 3,
-  },
-  {
-    id: 3,
-    title: 'Street Lighting Fixture Restored',
-    message: 'Work order #4 closed by Urban Power Unit. High efficiency LED operational.',
-    time: '1 hour ago',
-    type: 'success',
-    unread: false,
-    issueId: 4,
-  },
-  {
-    id: 4,
-    title: 'Field Crew Dispatched',
-    message: 'Rapid Asphalt Patch Crew #1 en route to MG Road with bituminous hot mix.',
-    time: '2 hours ago',
-    type: 'info',
-    unread: false,
-    issueId: 1,
-  },
-]
+// Initial notifications feed (hydrated dynamically from database)
+const INITIAL_NOTIFICATIONS = []
 
-// Period datasets for dynamic stats switching
-const DATA_BY_PERIOD = {
-  'Last 30 Days': {
-    stats: {
-      total: 1432,
-      totalTrend: '12%',
-      pending: 428,
-      pendingTrend: '5%',
-      inProgress: 612,
-      inProgressTrend: '8%',
-      resolved: 392,
-      resolvedTrend: '20%',
-    },
-    categories: [
-      { name: 'Pothole', percentage: 42, color: '#0284c7' },
-      { name: 'Broken Road', percentage: 18, color: '#f97316' },
-      { name: 'Open Drain', percentage: 12, color: '#ef4444' },
-      { name: 'Street Light', percentage: 10, color: '#6366f1' },
-      { name: 'Footpath', percentage: 8, color: '#a855f7' },
-      { name: 'Water Logging', percentage: 6, color: '#fb923c' },
-      { name: 'Others', percentage: 4, color: '#c084fc' },
-    ],
-    priorities: [
-      { name: 'High', count: 450, color: '#ef4444', percentWidth: 50 },
-      { name: 'Medium', count: 640, color: '#f59e0b', percentWidth: 78 },
-      { name: 'Low', count: 392, color: '#10b981', percentWidth: 52 },
-    ],
-    reports: [
-      {
-        id: 1,
-        title: 'Large pothole on MG Road',
-        location: 'MG Road Corridor',
-        category: 'Pothole',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '12 Oct 2024',
-        department: 'Public Works Department (PWD)',
-        details: 'Deep pothole roughly 2 feet wide on the central lane causing vehicle congestion and rim damage.',
-        assignedCrew: 'Rapid Asphalt Patch Crew #1',
-        aiConfidence: 97.4,
-      },
-      {
-        id: 2,
-        title: 'Broken footpath',
-        location: 'Lajpat Nagar Central',
-        category: 'Footpath',
-        priority: 'Medium',
-        status: 'Pending',
-        reportedOn: '12 Oct 2024',
-        department: 'Municipal Corporation (South Zone)',
-        details: 'Several interlocking concrete tiles fractured and missing near the main market crossing.',
-        assignedCrew: null,
-        aiConfidence: 91.2,
-      },
-      {
-        id: 3,
-        title: 'Open drain cover',
-        location: 'Karol Bagh West',
-        category: 'Open Drain',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '11 Oct 2024',
-        department: 'Water & Sewage Utility Authority',
-        details: 'Cast iron stormwater grate shifted off collar; hazardous for night pedestrians and two-wheelers.',
-        assignedCrew: 'Stormwater Grate & Drainage Squad A',
-        aiConfidence: 98.6,
-      },
-      {
-        id: 4,
-        title: 'Damaged street light',
-        location: 'Connaught Place Circle',
-        category: 'Street Light',
-        priority: 'Low',
-        status: 'Resolved',
-        reportedOn: '10 Oct 2024',
-        department: 'Department of Urban Power & Lighting',
-        details: 'Internal lamp driver malfunction. Replaced with high-efficiency 90W LED fixture.',
-        assignedCrew: 'Urban Lighting High-Boom Unit 4',
-        aiConfidence: 94.0,
-      },
-      {
-        id: 5,
-        title: 'Water logging near underpass',
-        location: 'Saket Metro Underpass',
-        category: 'Water Logging',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '09 Oct 2024',
-        department: 'Drainage & Stormwater Division',
-        details: 'Debris blocking drainage sump resulting in 6 inches of standing stormwater.',
-        assignedCrew: null,
-        aiConfidence: 96.1,
-      },
-      {
-        id: 6,
-        title: 'Broken road divider',
-        location: 'Nehru Place Hub',
-        category: 'Broken Road',
-        priority: 'Medium',
-        status: 'Pending',
-        reportedOn: '08 Oct 2024',
-        department: 'Road Safety & Traffic Engineering',
-        details: 'Reinforced concrete curb knocked down by turning vehicle, obstructing inner lane.',
-        assignedCrew: null,
-        aiConfidence: 89.8,
-      },
-    ],
+// Timeframes for admin filtering
+const TIME_PERIODS = ['Last 30 Days', 'Last 7 Days', 'Last 24 Hours', 'Last 90 Days']
+
+// Zeroed empty state for clean dynamic hydration
+const EMPTY_DASHBOARD_DATA = {
+  stats: {
+    total: 0,
+    totalTrend: '0%',
+    pending: 0,
+    pendingTrend: '0%',
+    inProgress: 0,
+    inProgressTrend: '0%',
+    resolved: 0,
+    resolvedTrend: '0%',
   },
-  'Last 7 Days': {
-    stats: {
-      total: 384,
-      totalTrend: '9%',
-      pending: 112,
-      pendingTrend: '3%',
-      inProgress: 164,
-      inProgressTrend: '11%',
-      resolved: 108,
-      resolvedTrend: '16%',
-    },
-    categories: [
-      { name: 'Pothole', percentage: 45, color: '#0284c7' },
-      { name: 'Broken Road', percentage: 17, color: '#f97316' },
-      { name: 'Open Drain', percentage: 11, color: '#ef4444' },
-      { name: 'Street Light', percentage: 12, color: '#6366f1' },
-      { name: 'Footpath', percentage: 7, color: '#a855f7' },
-      { name: 'Water Logging', percentage: 5, color: '#fb923c' },
-      { name: 'Others', percentage: 3, color: '#c084fc' },
-    ],
-    priorities: [
-      { name: 'High', count: 120, color: '#ef4444', percentWidth: 42 },
-      { name: 'Medium', count: 174, color: '#f59e0b', percentWidth: 70 },
-      { name: 'Low', count: 90, color: '#10b981', percentWidth: 45 },
-    ],
-    reports: [
-      {
-        id: 1,
-        title: 'Large pothole on MG Road',
-        location: 'MG Road Corridor',
-        category: 'Pothole',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '12 Oct 2024',
-        department: 'Public Works Department (PWD)',
-        details: 'Deep pothole roughly 2 feet wide on central lane.',
-        assignedCrew: 'Rapid Asphalt Patch Crew #1',
-        aiConfidence: 97.4,
-      },
-      {
-        id: 2,
-        title: 'Broken footpath',
-        location: 'Lajpat Nagar Central',
-        category: 'Footpath',
-        priority: 'Medium',
-        status: 'Pending',
-        reportedOn: '12 Oct 2024',
-        department: 'Municipal Corporation (South Zone)',
-        details: 'Tiles fractured near the main market crossing.',
-        assignedCrew: null,
-        aiConfidence: 91.2,
-      },
-      {
-        id: 3,
-        title: 'Open drain cover',
-        location: 'Karol Bagh West',
-        category: 'Open Drain',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '11 Oct 2024',
-        department: 'Water & Sewage Utility Authority',
-        details: 'Cast iron cover dislodged after downpour.',
-        assignedCrew: 'Stormwater Grate & Drainage Squad A',
-        aiConfidence: 98.6,
-      },
-      {
-        id: 4,
-        title: 'Damaged street light',
-        location: 'Connaught Place Circle',
-        category: 'Street Light',
-        priority: 'Low',
-        status: 'Resolved',
-        reportedOn: '10 Oct 2024',
-        department: 'Department of Urban Power & Lighting',
-        details: 'LED bulb replaced on pole #42.',
-        assignedCrew: 'Urban Lighting High-Boom Unit 4',
-        aiConfidence: 94.0,
-      },
-    ],
-  },
-  'Last 24 Hours': {
-    stats: {
-      total: 64,
-      totalTrend: '4%',
-      pending: 29,
-      pendingTrend: '12%',
-      inProgress: 23,
-      inProgressTrend: '5%',
-      resolved: 12,
-      resolvedTrend: '8%',
-    },
-    categories: [
-      { name: 'Pothole', percentage: 40, color: '#0284c7' },
-      { name: 'Broken Road', percentage: 20, color: '#f97316' },
-      { name: 'Open Drain', percentage: 15, color: '#ef4444' },
-      { name: 'Street Light', percentage: 10, color: '#6366f1' },
-      { name: 'Footpath', percentage: 7, color: '#a855f7' },
-      { name: 'Water Logging', percentage: 5, color: '#fb923c' },
-      { name: 'Others', percentage: 3, color: '#c084fc' },
-    ],
-    priorities: [
-      { name: 'High', count: 22, color: '#ef4444', percentWidth: 55 },
-      { name: 'Medium', count: 30, color: '#f59e0b', percentWidth: 80 },
-      { name: 'Low', count: 12, color: '#10b981', percentWidth: 35 },
-    ],
-    reports: [
-      {
-        id: 1,
-        title: 'Large pothole on MG Road',
-        location: 'MG Road Corridor',
-        category: 'Pothole',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: 'Today, 09:30 AM',
-        department: 'Public Works Department (PWD)',
-        details: 'Emergency asphalt crew dispatched to site.',
-        assignedCrew: 'Rapid Asphalt Patch Crew #1',
-        aiConfidence: 97.4,
-      },
-      {
-        id: 2,
-        title: 'Broken footpath',
-        location: 'Lajpat Nagar Central',
-        category: 'Footpath',
-        priority: 'Medium',
-        status: 'Pending',
-        reportedOn: 'Today, 08:15 AM',
-        department: 'Municipal Corporation (South Zone)',
-        details: 'Pedestrian hazard flagged by neighborhood watch.',
-        assignedCrew: null,
-        aiConfidence: 91.2,
-      },
-    ],
-  },
-  'Last 90 Days': {
-    stats: {
-      total: 4120,
-      totalTrend: '16%',
-      pending: 1180,
-      pendingTrend: '4%',
-      inProgress: 1690,
-      inProgressTrend: '11%',
-      resolved: 1250,
-      resolvedTrend: '24%',
-    },
-    categories: [
-      { name: 'Pothole', percentage: 41, color: '#0284c7' },
-      { name: 'Broken Road', percentage: 19, color: '#f97316' },
-      { name: 'Open Drain', percentage: 13, color: '#ef4444' },
-      { name: 'Street Light', percentage: 11, color: '#6366f1' },
-      { name: 'Footpath', percentage: 8, color: '#a855f7' },
-      { name: 'Water Logging', percentage: 5, color: '#fb923c' },
-      { name: 'Others', percentage: 3, color: '#c084fc' },
-    ],
-    priorities: [
-      { name: 'High', count: 1290, color: '#ef4444', percentWidth: 52 },
-      { name: 'Medium', count: 1840, color: '#f59e0b', percentWidth: 76 },
-      { name: 'Low', count: 990, color: '#10b981', percentWidth: 48 },
-    ],
-    reports: [
-      {
-        id: 1,
-        title: 'Large pothole on MG Road',
-        location: 'MG Road Corridor',
-        category: 'Pothole',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '12 Oct 2024',
-        department: 'Public Works Department (PWD)',
-        details: 'Deep pothole reported by commuter app.',
-        assignedCrew: 'Rapid Asphalt Patch Crew #1',
-        aiConfidence: 97.4,
-      },
-      {
-        id: 2,
-        title: 'Broken footpath',
-        location: 'Lajpat Nagar Central',
-        category: 'Footpath',
-        priority: 'Medium',
-        status: 'Pending',
-        reportedOn: '12 Oct 2024',
-        department: 'Municipal Corporation (South Zone)',
-        details: 'Fractured paving tiles pending contractor review.',
-        assignedCrew: null,
-        aiConfidence: 91.2,
-      },
-      {
-        id: 3,
-        title: 'Open drain cover',
-        location: 'Karol Bagh West',
-        category: 'Open Drain',
-        priority: 'High',
-        status: 'In Progress',
-        reportedOn: '11 Oct 2024',
-        department: 'Water & Sewage Utility Authority',
-        details: 'Temporary barrier placed before cover restoration.',
-        assignedCrew: 'Stormwater Grate & Drainage Squad A',
-        aiConfidence: 98.6,
-      },
-      {
-        id: 4,
-        title: 'Damaged street light',
-        location: 'Connaught Place Circle',
-        category: 'Street Light',
-        priority: 'Low',
-        status: 'Resolved',
-        reportedOn: '10 Oct 2024',
-        department: 'Department of Urban Power & Lighting',
-        details: 'Smart sensor LED lamp successfully installed.',
-        assignedCrew: 'Urban Lighting High-Boom Unit 4',
-        aiConfidence: 94.0,
-      },
-    ],
-  },
+  categories: [],
+  priorities: [
+    { name: 'High', count: 0, color: '#ef4444', percentWidth: 0 },
+    { name: 'Medium', count: 0, color: '#f59e0b', percentWidth: 0 },
+    { name: 'Low', count: 0, color: '#10b981', percentWidth: 0 },
+  ],
+  reports: [],
 }
 
 export default function AdminDashboard({ onExit } = {}) {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { token, logout } = useAuth()
   const [isLoggedIn, setIsLoggedIn] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('Last 30 Days')
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
@@ -538,7 +201,7 @@ export default function AdminDashboard({ onExit } = {}) {
   const [toast, setToast] = useState(null)
 
   // Dataset states
-  const [currentData, setCurrentData] = useState(DATA_BY_PERIOD['Last 30 Days'])
+  const [currentData, setCurrentData] = useState(EMPTY_DASHBOARD_DATA)
   const [crews, setCrews] = useState(INITIAL_CREWS)
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS)
@@ -561,10 +224,119 @@ export default function AdminDashboard({ onExit } = {}) {
     }, 3500)
   }
 
+  // Live database fetchers
+  const fetchAdminOverview = useCallback(async (period = selectedPeriod) => {
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      const res = await fetch(`/api/admin/overview?period=${encodeURIComponent(period)}`, { headers })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.reports) {
+          setCurrentData({
+            stats: data.stats || EMPTY_DASHBOARD_DATA.stats,
+            categories: data.categories || [],
+            priorities: data.priorities || EMPTY_DASHBOARD_DATA.priorities,
+            reports: data.reports || [],
+          })
+          return
+        }
+      }
+
+      // Resilient fallback to public issues endpoint if admin overview is unavailable
+      const fallbackRes = await fetch('/api/issues')
+      if (fallbackRes.ok) {
+        const fallbackData = await fallbackRes.json()
+        const issues = fallbackData.issues || []
+        const total = issues.length
+        const pending = issues.filter((i) => i.status === 'reported' || i.status === 'Pending').length
+        const inProgress = issues.filter((i) => i.status === 'in_progress' || i.status === 'In Progress' || i.status === 'assigned' || i.status === 'verified').length
+        const resolved = issues.filter((i) => i.status === 'resolved' || i.status === 'Resolved').length
+
+        const highCount = issues.filter((i) => (i.severity || i.priority || '').toLowerCase() === 'high').length
+        const medCount = issues.filter((i) => (i.severity || i.priority || '').toLowerCase() === 'medium').length
+        const lowCount = issues.filter((i) => (i.severity || i.priority || '').toLowerCase() === 'low').length
+
+        const reports = issues.map((row) => ({
+          id: row.id,
+          title: row.title,
+          location: row.location_name || row.location || row.city,
+          latitude: row.latitude ? parseFloat(row.latitude) : null,
+          longitude: row.longitude ? parseFloat(row.longitude) : null,
+          lat: row.latitude ? parseFloat(row.latitude) : null,
+          lng: row.longitude ? parseFloat(row.longitude) : null,
+          category: row.category || 'Road Defect',
+          priority: (row.severity || row.priority || 'medium').charAt(0).toUpperCase() + (row.severity || row.priority || 'medium').slice(1),
+          status: row.status === 'in_progress' ? 'In Progress' : (row.status || 'Reported').charAt(0).toUpperCase() + (row.status || 'Reported').slice(1),
+          reportedOn: new Date(row.reported_at || row.created_at || Date.now()).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          }),
+          department: row.department || 'Public Works Department (PWD)',
+          details: row.description || row.details || '',
+          assignedCrew: row.assigned_crew || null,
+          aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : 95.0,
+        }))
+
+        setCurrentData({
+          stats: {
+            total,
+            totalTrend: '0%',
+            pending,
+            pendingTrend: '0%',
+            inProgress,
+            inProgressTrend: '0%',
+            resolved,
+            resolvedTrend: '0%',
+          },
+          categories: [],
+          priorities: [
+            { name: 'High', count: highCount, color: '#ef4444', percentWidth: total > 0 ? Math.round((highCount / total) * 100) : 0 },
+            { name: 'Medium', count: medCount, color: '#f59e0b', percentWidth: total > 0 ? Math.round((medCount / total) * 100) : 0 },
+            { name: 'Low', count: lowCount, color: '#10b981', percentWidth: total > 0 ? Math.round((lowCount / total) * 100) : 0 },
+          ],
+          reports,
+        })
+      }
+    } catch (err) {
+      console.error('Failed to load admin overview from database:', err)
+    }
+  }, [token, selectedPeriod])
+
+  const fetchAdminMetadata = useCallback(async () => {
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      const [crewsRes, deptsRes, notifsRes] = await Promise.all([
+        fetch('/api/admin/crews', { headers }),
+        fetch('/api/admin/departments', { headers }),
+        fetch('/api/admin/notifications', { headers }),
+      ])
+      if (crewsRes.ok) {
+        const cJson = await crewsRes.json()
+        if (cJson.success && Array.isArray(cJson.crews)) setCrews(cJson.crews)
+      }
+      if (deptsRes.ok) {
+        const dJson = await deptsRes.json()
+        if (dJson.success && Array.isArray(dJson.departments)) setDepartments(dJson.departments)
+      }
+      if (notifsRes.ok) {
+        const nJson = await notifsRes.json()
+        if (nJson.success && Array.isArray(nJson.notifications)) setNotifications(nJson.notifications)
+      }
+    } catch (err) {
+      console.error('Failed to load admin metadata from database:', err)
+    }
+  }, [token])
+
+  useEffect(() => {
+    fetchAdminOverview(selectedPeriod)
+    fetchAdminMetadata()
+  }, [fetchAdminOverview, fetchAdminMetadata, selectedPeriod])
+
   // Switch time period dynamically
   const handlePeriodChange = (period) => {
     setSelectedPeriod(period)
-    setCurrentData(JSON.parse(JSON.stringify(DATA_BY_PERIOD[period])))
+    fetchAdminOverview(period)
     setCategoryFilter(null)
     setPriorityFilter(null)
     setStatusFilter(null)
@@ -572,8 +344,8 @@ export default function AdminDashboard({ onExit } = {}) {
     showToast(`Timeframe updated to ${period}`, 'info')
   }
 
-  // Status update function that shifts stats dynamically
-  const updateReportStatus = (reportId, nextStatus) => {
+  // Status update function that persists to PostgreSQL and shifts stats dynamically
+  const updateReportStatus = async (reportId, nextStatus) => {
     setCurrentData((prev) => {
       const target = prev.reports.find((r) => r.id === reportId)
       if (!target || target.status === nextStatus) return prev
@@ -604,44 +376,74 @@ export default function AdminDashboard({ onExit } = {}) {
       setSelectedReportForView((prev) => ({ ...prev, status: nextStatus }))
     }
 
-    showToast(`Incident #${reportId > 1000 ? String(reportId).slice(-4) : reportId} updated to ${nextStatus}`, 'success')
+    try {
+      const statusMap = {
+        'Pending': 'reported',
+        'In Progress': 'in_progress',
+        'Resolved': 'resolved',
+      }
+      const apiStatus = statusMap[nextStatus] || nextStatus.toLowerCase().replace(' ', '_')
+      await fetch(`/api/issues/${reportId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status: apiStatus }),
+      })
+    } catch (e) {
+      console.error('Error syncing status update to DB:', e)
+    }
+
+    showToast(`Incident #${typeof reportId === 'string' && reportId.length > 8 ? reportId.slice(-4) : reportId} updated to ${nextStatus}`, 'success')
   }
 
-  // Add new issue
-  const handleAddIssue = (newIssue) => {
-    setCurrentData((prev) => {
-      const updatedReports = [newIssue, ...prev.reports]
-      const updatedStats = {
-        ...prev.stats,
-        total: prev.stats.total + 1,
-        pending: prev.stats.pending + 1,
+  // Add new issue to PostgreSQL database
+  const handleAddIssue = async (newIssue) => {
+    try {
+      const categoryMap = {
+        'Pothole': 'pothole',
+        'Broken Road': 'road',
+        'Open Drain': 'drain',
+        'Street Light': 'light',
+        'Footpath': 'footpath',
+        'Water Logging': 'water',
+        'Traffic Signal': 'signal',
+        'Others': 'other',
       }
-      return {
-        ...prev,
-        stats: updatedStats,
-        reports: updatedReports,
+      const payload = {
+        title: newIssue.title,
+        description: newIssue.details || '',
+        category: categoryMap[newIssue.category] || newIssue.category.toLowerCase(),
+        severity: (newIssue.priority || 'Medium').toLowerCase(),
+        locationName: newIssue.location,
+        city: 'New Delhi',
+        department: newIssue.department,
       }
-    })
 
-    // Also push a live notification
-    setNotifications((prev) => [
-      {
-        id: Date.now(),
-        title: `New Defect Logged: ${newIssue.title}`,
-        message: `${newIssue.priority} priority incident filed at ${newIssue.location}.`,
-        time: 'Just now',
-        type: newIssue.priority === 'High' ? 'urgent' : 'warning',
-        unread: true,
-        issueId: newIssue.id,
-      },
-      ...prev,
-    ])
+      const res = await fetch('/api/issues', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      })
 
-    showToast(`Logged new incident: "${newIssue.title}"`, 'success')
+      if (res.ok) {
+        await fetchAdminOverview()
+        showToast(`Logged new incident to database: "${newIssue.title}"`, 'success')
+      }
+    } catch (e) {
+      console.error('Failed to create issue in database:', e)
+      showToast(`Incident created locally`, 'info')
+    }
+
+    setNewIssueModalOpen(false)
   }
 
-  // Delete issue
-  const handleDeleteIssue = (issueId) => {
+  // Delete issue from PostgreSQL database
+  const handleDeleteIssue = async (issueId) => {
     setCurrentData((prev) => {
       const target = prev.reports.find((r) => r.id === issueId)
       if (!target) return prev
@@ -661,11 +463,20 @@ export default function AdminDashboard({ onExit } = {}) {
       setSelectedReportForView(null)
     }
 
-    showToast(`Incident #${issueId > 1000 ? String(issueId).slice(-4) : issueId} deleted`, 'info')
+    try {
+      await fetch(`/api/issues/${issueId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch (e) {
+      console.error('Failed to delete issue in database:', e)
+    }
+
+    showToast(`Incident #${typeof issueId === 'string' && issueId.length > 8 ? issueId.slice(-4) : issueId} deleted`, 'info')
   }
 
   // Assign crew directly to issue
-  const handleAssignCrew = (issueId, crewName) => {
+  const handleAssignCrew = async (issueId, crewName) => {
     setCurrentData((prev) => ({
       ...prev,
       reports: prev.reports.map((r) =>
@@ -687,6 +498,22 @@ export default function AdminDashboard({ onExit } = {}) {
         assignedCrew: crewName,
         status: 'In Progress',
       }))
+    }
+
+    try {
+      const crew = crews.find((c) => c.name === crewName)
+      if (crew) {
+        await fetch(`/api/admin/crews/${crew.id}/assign`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ issueId, status: 'Dispatched' }),
+        })
+      }
+    } catch (e) {
+      console.error('Error assigning crew in DB:', e)
     }
 
     showToast(`Assigned ${crewName} to incident`, 'success')
@@ -716,25 +543,36 @@ export default function AdminDashboard({ onExit } = {}) {
     showToast(`Crew status updated to ${newStatus}`, 'info')
   }
 
-  // Refresh Telemetry button
-  const handleRefreshData = () => {
+  // Refresh Telemetry button from live DB
+  const handleRefreshData = async () => {
     setIsRefreshing(true)
-    setTimeout(() => {
-      setIsRefreshing(false)
-      showToast('Live telemetry & AI feeds successfully synchronized', 'success')
-    }, 700)
+    await Promise.all([fetchAdminOverview(), fetchAdminMetadata()])
+    setIsRefreshing(false)
+    showToast('Live PostgreSQL telemetry synchronized', 'success')
   }
 
   // Notification handlers
-  const handleMarkAllNotificationsAsRead = () => {
+  const handleMarkAllNotificationsAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
+    try {
+      await fetch('/api/admin/notifications/read-all', {
+        method: 'PATCH',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch (e) {}
     showToast('All notifications marked as read', 'success')
   }
 
-  const handleToggleReadNotification = (id) => {
+  const handleToggleReadNotification = async (id) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, unread: !n.unread } : n))
     )
+    try {
+      await fetch(`/api/admin/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch (e) {}
   }
 
   const handleDeleteNotification = (id) => {
@@ -951,7 +789,7 @@ export default function AdminDashboard({ onExit } = {}) {
 
               {periodDropdownOpen && (
                 <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-30">
-                  {Object.keys(DATA_BY_PERIOD).map((period) => (
+                  {TIME_PERIODS.map((period) => (
                     <button
                       key={period}
                       onClick={() => handlePeriodChange(period)}

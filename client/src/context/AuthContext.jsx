@@ -222,6 +222,31 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  /**
+   * Update authenticated user profile
+   */
+  const updateProfile = useCallback(async ({ name, organisation, phone }) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, organisation, phone }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setUser(data.user);
+        localStorage.setItem('uip_user', JSON.stringify(data.user));
+        return { success: true, user: data.user };
+      }
+      return { success: false, message: data.message };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  }, [token]);
+
   const isAuthenticated = !!token && !!user;
   const isAdmin = user?.role === 'admin';
 
@@ -236,6 +261,7 @@ export function AuthProvider({ children }) {
         authError,
         login,
         register,
+        updateProfile,
         logout,
         getSavedCredentials,
       }}

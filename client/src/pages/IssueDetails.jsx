@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useIssues } from '../context/IssueContext';
 import { useNav } from '../hooks/useCitizenNav';
@@ -6,6 +6,7 @@ import { SEVERITIES, categoryById, formatDateTime } from '../data/demoIssues';
 import IssuePhoto from '../assets/IssuePhotos';
 import { ArrowLeftIcon, CheckIcon, ClockIcon, FileIcon, PinIcon, ShareIcon, ShieldAlertIcon, ThumbUpIcon, UserIcon, UsersIcon } from '../components/citizen/icons';
 import { StatusBadge } from '../components/citizen/SeverityBadge';
+import GoogleMapView from '../components/common/GoogleMapView';
 import { btnPrimary, errorCls, focusRing, inputBad, inputCls, inputOk } from '../components/citizen/ui';
  
 const STATUS_ICONS = { reported: UserIcon, verified: CheckIcon, assigned: FileIcon, in_progress: ClockIcon, resolved: CheckIcon };
@@ -19,17 +20,44 @@ export default function IssueDetails() {
 function IssueDetailsView({ id }) {
   const { back } = useNav();
   const { getIssue, supportIssue, hasSupported, addComment } = useIssues();
-  const issue = getIssue(id);
+  const issueFromContext = getIssue(id);
+  const [fetchedIssue, setFetchedIssue] = useState(null);
+  const [loading, setLoading] = useState(!issueFromContext);
   const [tab, setTab] = useState('timeline');
   const [heroIndex, setHeroIndex] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
- 
+
+  useEffect(() => {
+    if (!issueFromContext && id) {
+      setLoading(true);
+      fetch(`/api/issues/${encodeURIComponent(id)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data.issue) {
+            setFetchedIssue(data.issue);
+          }
+        })
+        .catch((err) => console.error('Error fetching issue:', err))
+        .finally(() => setLoading(false));
+    }
+  }, [id, issueFromContext]);
+
+  const issue = issueFromContext || fetchedIssue;
+
+  if (loading) {
+    return (
+      <div className="px-4 py-16 text-center">
+        <p className="text-sm font-semibold text-slate-700 animate-pulse">Loading report details...</p>
+      </div>
+    );
+  }
+
   if (!issue) {
     return (
       <div className="px-4 py-16 text-center">
-        <p className="text-sm text-slate-600">This issue could not be found. It may have been lost when the page was refreshed.</p>
+        <p className="text-sm text-slate-600">This civic issue could not be found in the database.</p>
         <div className="mx-auto mt-4 max-w-xs"><button type="button" className={btnPrimary} onClick={back}>Go back</button></div>
       </div>
     );
@@ -40,21 +68,26 @@ function IssueDetailsView({ id }) {
   const cat = categoryById(issue.category);
  
   const share = async () => {
-    const text = `${issue.title} (${issue.referenceNumber}) from the Urban Intelligence prototype`;
+    const text = `${issue.title} (${issue.referenceNumber}) on Urban Intelligence Platform`;
+    const url = window.location.href;
     try {
-      if (navigator.share) await navigator.share({ title: issue.title, text });
-      else { await navigator.clipboard.writeText(text); setShareMsg('Issue summary copied to clipboard (demo; there are no public issue links yet).'); }
+      if (navigator.share) await navigator.share({ title: issue.title, text, url });
+      else {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        setShareMsg('Issue link and summary copied to clipboard!');
+        setTimeout(() => setShareMsg(''), 4000);
+      }
     } catch {
-      setShareMsg('Sharing was cancelled or is not available in this browser.');
+      setShareMsg('Sharing was cancelled or not supported.');
     }
   };
  
-  const postComment = (e) => {
+  const postComment = async (e) => {
     e.preventDefault();
     const text = commentText.trim();
     if (!text) { setCommentError('Write a comment before posting.'); return; }
     if (text.length > 300) { setCommentError('Comments must be 300 characters or fewer.'); return; }
-    addComment(issue.id, text);
+    await addComment(issue.id, text);
     setCommentText('');
     setCommentError('');
   };
@@ -90,25 +123,24 @@ function IssueDetailsView({ id }) {
           <StatusBadge status={issue.status} />
         </div>
         <p className="mt-2 text-xs text-slate-500">Reported on: {formatDateTime(issue.reportedAt)}</p>
-        {issue.isDemo && <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">Demo record ({issue.referenceNumber}). Not a real municipal report.</p>}
       </div>
- 
+
       </div>
- 
+
       <div>
       <div className="mt-4 px-4 lg:mt-0 lg:px-0">
         <div role="tablist" aria-label="Issue information" className="flex border-b border-slate-200">
           {TABS.map(([id, label]) => (
             <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} type="button" onClick={() => setTab(id)} className={`flex-1 cursor-pointer border-b-2 py-2.5 text-sm font-semibold ${tab === id ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'} ${focusRing}`}>
-              {label}{id === 'comments' ? ` (${issue.comments.length})` : ''}
+              {label}{id === 'comments' ? ` (${issue.comments?.length || 0})` : ''}
             </button>
           ))}
         </div>
- 
+
         {tab === 'timeline' && (
           <div role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" className="py-4">
             <ol>
-              {issue.timeline.map((t, i) => {
+              {issue.timeline?.map((t, i) => {
                 const Icon = STATUS_ICONS[t.status] ?? ClockIcon;
                 const last = i === issue.timeline.length - 1;
                 return (
@@ -118,7 +150,7 @@ function IssueDetailsView({ id }) {
                     <div>
                       <p className={`text-sm font-semibold ${t.status === 'resolved' ? 'text-green-700' : 'text-slate-900'}`}>{t.label}</p>
                       <p className="text-xs text-slate-500">{formatDateTime(t.at)}</p>
-                      {t.status === 'reported' && issue.photos.length > 0 && (
+                      {t.status === 'reported' && issue.photos?.length > 0 && (
                         <button type="button" onClick={() => { setHeroIndex(0); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`mt-1 cursor-pointer rounded bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700 ${focusRing}`}>View Image</button>
                       )}
                     </div>
@@ -126,25 +158,43 @@ function IssueDetailsView({ id }) {
                 );
               })}
             </ol>
-            {issue.timeline.length === 1 && <p className="mt-4 text-xs text-slate-500">No further updates yet. Verification, assignment and repair steps appear here when they happen.</p>}
+            {issue.timeline?.length === 1 && <p className="mt-4 text-xs text-slate-500">No further updates yet. Verification, assignment and repair steps appear here when they happen.</p>}
           </div>
         )}
- 
+
         {tab === 'details' && (
-          <dl role="tabpanel" id="panel-details" aria-labelledby="tab-details" className="space-y-3 py-4 text-sm">
-            {[
-              ['Description', issue.description || 'No description provided.'],
-              ['Category', cat.label],
-              ['Location', issue.locationName],
-              ['Severity', sev.label],
-              ['Status', <StatusBadge key="s" status={issue.status} />],
-              ['Report reference', <span key="r" className="font-mono">{issue.referenceNumber}</span>],
-              ['Last updated', formatDateTime(issue.updatedAt)],
-              ...(issue.latitude != null ? [['Device coordinates', `${issue.latitude}, ${issue.longitude}`]] : []),
-            ].map(([k, v]) => (
-              <div key={k} className="flex gap-3"><dt className="w-32 shrink-0 text-slate-500">{k}</dt><dd className="min-w-0 flex-1 text-slate-900">{v}</dd></div>
-            ))}
-          </dl>
+          <div role="tabpanel" id="panel-details" aria-labelledby="tab-details" className="py-4 space-y-4">
+            <dl className="space-y-3 text-sm">
+              {[
+                ['Description', issue.description || 'No description provided.'],
+                ['Category', cat.label],
+                ['Location', issue.locationName],
+                ['Severity', sev.label],
+                ['Status', <StatusBadge key="s" status={issue.status} />],
+                ['Report reference', <span key="r" className="font-mono">{issue.referenceNumber}</span>],
+                ['Last updated', formatDateTime(issue.updatedAt)],
+                ...(issue.latitude != null ? [['GPS coordinates', `${issue.latitude}, ${issue.longitude}`]] : []),
+              ].map(([k, v]) => (
+                <div key={k} className="flex gap-3"><dt className="w-32 shrink-0 text-slate-500">{k}</dt><dd className="min-w-0 flex-1 text-slate-900">{v}</dd></div>
+              ))}
+            </dl>
+
+            {issue.latitude != null && issue.longitude != null && (
+              <div className="mt-4">
+                <p className="text-xs font-bold text-slate-700 mb-2">Google Maps Hazard Pin</p>
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <GoogleMapView
+                    pin={{ lat: parseFloat(issue.latitude), lng: parseFloat(issue.longitude) }}
+                    center={{ lat: parseFloat(issue.latitude), lng: parseFloat(issue.longitude) }}
+                    zoom={16}
+                    height="200px"
+                    interactive={false}
+                    showControls={false}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
  
         {tab === 'comments' && (
@@ -165,8 +215,8 @@ function IssueDetailsView({ id }) {
               <label htmlFor="comment" className="mb-1.5 block text-sm font-semibold text-slate-900">Add a comment</label>
               <textarea id="comment" rows={3} value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Share an update or extra detail..." className={`${inputCls} ${commentError ? inputBad : inputOk} resize-none`} />
               {commentError && <p role="alert" className={errorCls}>{commentError}</p>}
-              <div className="mt-2"><button type="submit" className={btnPrimary}>Post comment (demo)</button></div>
-              <p className="mt-2 text-[11px] text-slate-500">Demo only: comments exist in this session and are not visible to anyone else.</p>
+              <div className="mt-2"><button type="submit" className={btnPrimary}>Post comment</button></div>
+              <p className="mt-2 text-[11px] text-slate-500">Comments are recorded in the public issue registry.</p>
             </form>
           </div>
         )}
@@ -193,19 +243,18 @@ function IssueDetailsView({ id }) {
           <button
             type="button"
             onClick={() => supportIssue(issue.id)}
-            disabled={supported}
-            aria-label={supported ? 'You supported this issue (demo)' : 'Support this issue (demo vote)'}
+            aria-label={supported ? 'Remove upvote' : 'Support / Upvote this issue'}
             className={`${btnPrimary} flex-1`}
           >
             {supported ? <CheckIcon className="h-5 w-5" /> : <ThumbUpIcon className="h-5 w-5" />}
-            {supported ? 'Supported (Demo)' : 'Support (Vote)'}
+            {supported ? 'Upvoted' : 'Support (Vote)'}
           </button>
           <button type="button" onClick={share} aria-label="Share this issue" className={`flex w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 ${focusRing}`}>
             <ShareIcon className="h-5 w-5" />
           </button>
         </div>
         <p role="status" className="mt-1.5 text-center text-[11px] text-slate-500">
-          {shareMsg || 'Demo vote: counted in this session only until real accounts and a backend exist.'}
+          {shareMsg || 'Every citizen upvote raises the priority in the municipal repair schedule.'}
         </p>
       </div>
       </div>

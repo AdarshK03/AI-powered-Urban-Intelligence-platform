@@ -116,10 +116,26 @@ function Scene({ kind }) {
 }
  
 export default function IssuePhoto({ photo, alt, className = '' }) {
-  if (photo?.url) return <img src={photo.url} alt={alt} className={`object-cover ${className}`} />;
+  const src = typeof photo === 'string' ? photo : (photo?.url || photo?.dataUrl);
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={alt || 'Reported road issue photo'}
+        className={`object-cover ${className}`}
+        onError={(e) => {
+          e.currentTarget.onerror = null;
+          e.currentTarget.style.display = 'none';
+          if (e.currentTarget.parentElement) {
+            e.currentTarget.parentElement.classList.add('bg-slate-200');
+          }
+        }}
+      />
+    );
+  }
   return (
-    <svg role="img" aria-label={alt} viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" className={className}>
-      <Scene kind={photo?.kind} />
-    </svg>
+    <div className={`flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-2 text-center ${className}`}>
+      <span className="text-[11px] font-medium">No photo available</span>
+    </div>
   );
 }

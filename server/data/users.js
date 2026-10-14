@@ -1,106 +1,107 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { query } from '../config/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, 'users.json');
-
-// Pre-seeded credentials
-const DEFAULT_USERS = [
-  {
-    id: 'usr_admin_001',
-    name: 'Municipal Administrator',
-    email: 'admin@urban-intelligence.gov.in',
-    passwordHash: bcrypt.hashSync('admin123', 10),
-    role: 'admin',
-    organisation: 'Municipal Road Infrastructure Administration',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'usr_citizen_001',
-    name: 'Priya Sharma',
-    email: 'citizen@urban-intelligence.in',
-    passwordHash: bcrypt.hashSync('citizen123', 10),
-    role: 'citizen',
-    organisation: 'Civic Resident Association',
-    createdAt: new Date().toISOString()
-  }
-];
-
-// In-memory user cache with file-system persistence
-let users = [];
-
-function loadUsers() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf-8');
-      users = JSON.parse(data);
-    } else {
-      users = [...DEFAULT_USERS];
-      saveUsers();
-    }
-  } catch (err) {
-    console.error('Error loading users from file, initializing with defaults:', err);
-    users = [...DEFAULT_USERS];
-  }
+export function sanitizeUser(user) {
+  if (!user) return null;
+  const { password_hash, passwordHash, ...safeUser } = user;
+  return {
+    ...safeUser,
+    passwordHash: undefined,
+  };
 }
 
-function saveUsers() {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(users, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving users to file:', err);
-  }
-}
-
-// Initial load
-loadUsers();
-
-export function findUserByEmail(email) {
+export async function findUserByEmail(email) {
   if (!email) return null;
   const normalized = email.trim().toLowerCase();
-  return users.find((u) => u.email.toLowerCase() === normalized) || null;
+  const res = await query('SELECT * FROM users WHERE LOWER(email) = $1 LIMIT 1', [normalized]);
+  if (!res.rows.length) return null;
+  const row = res.rows[0];
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    passwordHash: row.password_hash,
+    role: row.role,
+    organisation: row.organisation,
+    phone: row.phone,
+    createdAt: row.created_at,
+  };
 }
 
-export function findUserById(id) {
+export async function findUserById(id) {
   if (!id) return null;
-  return users.find((u) => u.id === id) || null;
+  const res = await query('SELECT * FROM users WHERE id = $1 LIMIT 1', [id]);
+  if (!res.rows.length) return null;
+  const row = res.rows[0];
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    passwordHash: row.password_hash,
+    role: row.role,
+    organisation: row.organisation,
+    phone: row.phone,
+    createdAt: row.created_at,
+  };
 }
 
-export function createUser({ name, email, password, role = 'citizen', organisation = '' }) {
+export async function createUser({ name, email, password, role = 'citizen', organisation = '' }) {
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = findUserByEmail(normalizedEmail);
+  const existing = await findUserByEmail(normalizedEmail);
   if (existing) {
     throw new Error('A user with this email already exists.');
   }
 
   const salt = bcrypt.genSaltSync(10);
   const passwordHash = bcrypt.hashSync(password, salt);
+  const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-  const newUser = {
-    id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    name: name.trim(),
-    email: normalizedEmail,
-    passwordHash,
-    role: role || 'citizen',
-    organisation: organisation.trim() || 'Civic Participant',
-    createdAt: new Date().toISOString()
-  };
+  const res = await query(
+    `INSERT INTO users (id, name, email, password_hash, role, organisation)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, email, role, organisation, phone, created_at AS "createdAt"`,
+    [id, name.trim(), normalizedEmail, passwordHash, role || 'citizen', organisation.trim() || 'Civic Participant']
+  );
 
-  users.push(newUser);
-  saveUsers();
-
-  return sanitizeUser(newUser);
+  return res.rows[0];
 }
 
-export function sanitizeUser(user) {
-  if (!user) return null;
-  const { passwordHash, ...safeUser } = user;
-  return safeUser;
+export async function updateUserProfile(id, { name, organisation, phone }) {
+  const updates = [];
+  const values = [];
+  let idx = 1;
+
+  if (name !== undefined) {
+    updates.push(`name = $${idx++}`);
+    values.push(name.trim());
+  }
+  if (organisation !== undefined) {
+    updates.push(`organisation = $${idx++}`);
+    values.push(organisation.trim());
+  }
+  if (phone !== undefined) {
+    updates.push(`phone = $${idx++}`);
+    values.push(phone.trim());
+  }
+
+  if (updates.length === 0) return findUserById(id);
+
+  updates.push(`updated_at = NOW()`);
+  values.push(id);
+
+  const res = await query(
+    `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}
+     RETURNING id, name, email, role, organisation, phone, created_at AS "createdAt"`,
+    values
+  );
+
+  return res.rows[0];
 }
 
-export function getAllUsers() {
-  return users.map(sanitizeUser);
+export async function getAllUsers() {
+  const res = await query(
+    `SELECT id, name, email, role, organisation, phone, created_at AS "createdAt"
+     FROM users ORDER BY created_at DESC`
+  );
+  return res.rows;
 }

@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { findUserById, sanitizeUser } from '../data/users.js';
 
-export function authenticateToken(req, res, next) {
+export async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({
@@ -22,7 +22,7 @@ export function authenticateToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, secret);
-    const user = findUserById(decoded.id);
+    const user = await findUserById(decoded.id);
 
     if (!user) {
       return res.status(401).json({
@@ -45,6 +45,27 @@ export function authenticateToken(req, res, next) {
       message: 'Invalid or forged authentication token.'
     });
   }
+}
+
+export async function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return next();
+
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) return next();
+
+  const secret = process.env.JWT_SECRET || 'uip_urban_intelligence_jwt_secret_key_2026_road_governance';
+
+  try {
+    const decoded = jwt.verify(token, secret);
+    const user = await findUserById(decoded.id);
+    if (user) {
+      req.user = sanitizeUser(user);
+    }
+  } catch {
+    // Ignore invalid optional tokens
+  }
+  next();
 }
 
 export function requireRole(role) {

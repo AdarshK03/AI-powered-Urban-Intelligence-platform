@@ -48,12 +48,9 @@ export default function DepartmentsTab({
           const deptIssues = issues.filter(
             (i) => i.department && i.department.toLowerCase().includes(dept.shortCode.toLowerCase())
           )
-          const resolvedCount = deptIssues.filter((i) => i.status === 'Resolved').length
-          const totalCount = deptIssues.length || 1
-          const complianceRate = Math.min(
-            100,
-            Math.max(68, Math.round((resolvedCount / totalCount) * 100) || 84)
-          )
+          const resolvedCount = deptIssues.filter((i) => (i.status || '').toLowerCase() === 'resolved').length
+          const totalCount = deptIssues.length
+          const complianceRate = totalCount > 0 ? Math.round((resolvedCount / totalCount) * 100) : 100
 
           return (
             <div

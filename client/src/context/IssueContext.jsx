@@ -1,72 +1,178 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { DEMO_ISSUES } from '../data/demoIssues';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
- 
-// Shared issue store. Everything lives in React state, so a page refresh resets it.
-// TODO: replace these functions with API calls when the Node/Express backend exists.
+
 const IssueContext = createContext(null);
- 
+
 export function IssueProvider({ children }) {
-  const { user } = useAuth();
-  const [issues, setIssues] = useState(DEMO_ISSUES);
-  const [supportedIds, setSupportedIds] = useState([]);
-  const [city, setCity] = useState('New Delhi');
- 
-  const getIssue = useCallback((id) => issues.find((i) => i.id === id), [issues]);
- 
+  const { user, token } = useAuth();
+  const [issues, setIssues] = useState([]);
+  const [city, setCity] = useState('All Cities');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch issues from the live PostgreSQL backend
+  const fetchIssues = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const cityParam = city === 'All Cities' ? 'all' : city;
+      const res = await fetch(`/api/issues?city=${encodeURIComponent(cityParam)}`, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch issues.`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.issues)) {
+        setIssues(data.issues);
+      }
+    } catch (err) {
+      console.error('Failed to load issues from backend:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [city, token]);
+
+  useEffect(() => {
+    fetchIssues();
+  }, [fetchIssues]);
+
+  const getIssue = useCallback(
+    (id) => issues.find((i) => i.id === id || i.referenceNumber === id),
+    [issues]
+  );
+
   const addIssue = useCallback(
-    (data) => {
-      const n = issues.filter((i) => i.createdByUser).length + 1;
-      const nowIso = new Date().toISOString();
-      const issue = {
-        description: '', latitude: null, longitude: null, mapPos: null, photos: [],
-        ...data,
-        id: `iss-u${n}`,
-        referenceNumber: `UI-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`,
-        city,
-        status: 'reported',
-        supportCount: 0,
-        similarCount: 0,
-        reportedAt: nowIso,
-        updatedAt: nowIso,
-        timeline: [{ status: 'reported', label: 'Reported by citizen (demo)', at: nowIso }],
-        beforeAfter: null,
-        comments: [],
-        isDemo: true,
-        createdByUser: true,
-        reporterId: user?.id ?? null,
-      };
-      setIssues((prev) => [issue, ...prev]);
-      return issue;
+    async (data) => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const payload = {
+          ...data,
+          city: data.city || city,
+        };
+
+        const res = await fetch('/api/issues', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || 'Failed to submit issue report.');
+        }
+
+        const createdIssue = json.issue;
+        setIssues((prev) => [createdIssue, ...prev]);
+        return createdIssue;
+      } catch (err) {
+        console.error('Error adding issue:', err);
+        throw err;
+      }
     },
-    [issues, city, user?.id],
+    [city, token]
   );
- 
+
   const supportIssue = useCallback(
-    (id) => {
-      if (supportedIds.includes(id)) return false;
-      setSupportedIds((s) => [...s, id]);
-      setIssues((prev) => prev.map((i) => (i.id === id ? { ...i, supportCount: i.supportCount + 1 } : i)));
-      return true;
+    async (id) => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/issues/${id}/support`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ userId: user?.id }),
+        });
+
+        const json = await res.json();
+        if (res.ok && json.success) {
+          setIssues((prev) =>
+            prev.map((i) =>
+              i.id === id
+                ? {
+                    ...i,
+                    hasSupported: json.supported,
+                    supportCount: json.supportCount,
+                  }
+                : i
+            )
+          );
+          return json.supported;
+        }
+      } catch (err) {
+        console.error('Error toggling support:', err);
+      }
+      return false;
     },
-    [supportedIds],
+    [token, user?.id]
   );
- 
-  const hasSupported = useCallback((id) => supportedIds.includes(id), [supportedIds]);
- 
-  const addComment = useCallback((id, text) => {
-    const comment = { id: `c-${Date.now()}`, author: 'You (demo)', text, at: new Date().toISOString() };
-    setIssues((prev) => prev.map((i) => (i.id === id ? { ...i, comments: [...i.comments, comment] } : i)));
-  }, []);
- 
+
+  const hasSupported = useCallback(
+    (id) => {
+      const target = issues.find((i) => i.id === id);
+      return target ? !!target.hasSupported : false;
+    },
+    [issues]
+  );
+
+  const addComment = useCallback(
+    async (id, text) => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/issues/${id}/comments`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            text,
+            author: user?.name || 'Citizen',
+          }),
+        });
+
+        const json = await res.json();
+        if (res.ok && json.success) {
+          setIssues((prev) =>
+            prev.map((i) =>
+              i.id === id
+                ? {
+                    ...i,
+                    comments: json.comments,
+                  }
+                : i
+            )
+          );
+          return json.comment;
+        }
+      } catch (err) {
+        console.error('Error posting comment:', err);
+      }
+    },
+    [token, user?.name]
+  );
+
   const value = useMemo(
-    () => ({ issues, city, setCity, getIssue, addIssue, supportIssue, hasSupported, addComment }),
-    [issues, city, getIssue, addIssue, supportIssue, hasSupported, addComment],
+    () => ({
+      issues,
+      city,
+      setCity,
+      isLoading,
+      error,
+      refreshIssues: fetchIssues,
+      getIssue,
+      addIssue,
+      supportIssue,
+      hasSupported,
+      addComment,
+    }),
+    [issues, city, isLoading, error, fetchIssues, getIssue, addIssue, supportIssue, hasSupported, addComment]
   );
- 
+
   return <IssueContext.Provider value={value}>{children}</IssueContext.Provider>;
 }
- 
+
 export function useIssues() {
   const ctx = useContext(IssueContext);
   if (!ctx) throw new Error('useIssues must be used inside <IssueProvider>');

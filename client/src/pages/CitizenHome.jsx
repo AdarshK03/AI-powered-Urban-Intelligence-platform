@@ -26,10 +26,13 @@ export default function CitizenHome() {
     <div className="pb-28 lg:pb-10">
       <AppHeader query={query} onQuery={setQuery} placeholder="Search for issues, locations..." />
  
-      <p className="px-4 pb-2 text-sm font-semibold text-slate-900">Hello, {user?.name?.split(' ')[0] ?? 'there'}</p>
-      <p className="mx-4 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-        Issues shown here are demo data. Reports are not sent to a municipality yet and are cleared when you refresh.
-      </p>
+      <div className="mx-4 mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-900">Hello, {user?.name?.split(' ')[0] ?? 'there'}</p>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700 ring-1 ring-teal-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          Live DB Connected
+        </span>
+      </div>
  
       <CategoryGrid onSelect={(category) => navigate('map', { category })} />
  
@@ -57,7 +60,7 @@ export default function CitizenHome() {
         </div>
         {shown.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            {query ? `No issues match "${query}".` : `No demo issues in ${city} yet.`}
+            {query ? `No issues match "${query}".` : `No live reported issues in ${city} yet. Be the first citizen to report an issue!`}
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">

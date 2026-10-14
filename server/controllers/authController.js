@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { findUserByEmail, createUser, sanitizeUser } from '../data/users.js';
+import { findUserByEmail, createUser, updateUserProfile } from '../data/users.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,7 +44,7 @@ export async function login(req, res) {
     }
 
     // 2. Lookup user in database
-    const user = findUserByEmail(cleanEmail);
+    const user = await findUserByEmail(cleanEmail);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -61,7 +61,7 @@ export async function login(req, res) {
       });
     }
 
-    // 4. Issue JWT access token
+    // 4. Issue JWT
     const token = jwt.sign(
       {
         id: user.id,
@@ -72,11 +72,11 @@ export async function login(req, res) {
       { expiresIn: getJwtExpiresIn() }
     );
 
-    const safeUser = sanitizeUser(user);
+    const { passwordHash, ...safeUser } = user;
 
     return res.status(200).json({
       success: true,
-      message: 'Logged in successfully.',
+      message: 'Authentication successful.',
       token,
       user: safeUser
     });
@@ -84,19 +84,18 @@ export async function login(req, res) {
     console.error('Error during login:', error);
     return res.status(500).json({
       success: false,
-      message: 'An unexpected server error occurred during authentication.'
+      message: 'Internal server error during authentication.'
     });
   }
 }
 
 /**
- * Handle user registration
+ * Register new user
  */
 export async function register(req, res) {
   try {
-    const { name, email, password, confirmPassword, organisation, role } = req.body || {};
+    const { name, email, password, role, organisation } = req.body || {};
 
-    // 1. Backend validation
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({
         success: false,
@@ -116,41 +115,31 @@ export async function register(req, res) {
     if (!EMAIL_REGEX.test(cleanEmail)) {
       return res.status(400).json({
         success: false,
-        message: 'Please enter a valid email address.'
+        message: 'Please provide a valid email address.'
       });
     }
 
-    if (!password || typeof password !== 'string' || password.length < 8) {
+    if (!password || typeof password !== 'string' || password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 8 characters long.'
+        message: 'Password must be at least 6 characters long.'
       });
     }
 
-    if (confirmPassword && confirmPassword !== password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Passwords do not match.'
-      });
-    }
-
-    // 2. Check if user already exists
-    const existing = findUserByEmail(cleanEmail);
-    if (existing) {
+    const existingUser = await findUserByEmail(cleanEmail);
+    if (existingUser) {
       return res.status(409).json({
         success: false,
         message: 'An account with this email already exists.'
       });
     }
 
-    // Determine assigned role based on municipal domain or explicitly granted role
     let assignedRole = role || 'citizen';
     if (cleanEmail.endsWith('.gov.in') || cleanEmail.includes('admin')) {
       assignedRole = 'admin';
     }
 
-    // 3. Create user in database
-    const newUser = createUser({
+    const newUser = await createUser({
       name,
       email: cleanEmail,
       password,
@@ -158,7 +147,6 @@ export async function register(req, res) {
       organisation: organisation || ''
     });
 
-    // 4. Generate JWT token
     const token = jwt.sign(
       {
         id: newUser.id,
@@ -198,6 +186,27 @@ export async function getProfile(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Could not fetch user profile.'
+    });
+  }
+}
+
+/**
+ * Update user profile
+ */
+export async function updateProfile(req, res) {
+  try {
+    const { name, organisation, phone } = req.body || {};
+    const updatedUser = await updateUserProfile(req.user.id, { name, organisation, phone });
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully.',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Error in updateProfile:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Could not update profile.'
     });
   }
 }
