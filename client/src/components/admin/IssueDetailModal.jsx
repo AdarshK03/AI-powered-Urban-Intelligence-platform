@@ -49,6 +49,12 @@ export default function IssueDetailModal({
               </span>
             </div>
             <div>
+              <span className="text-slate-400 block text-[11px]">City</span>
+              <span className="font-semibold text-cyan-800 flex items-center gap-1 mt-0.5">
+                <span>📍 {(!report.city || report.city === 'All Cities') ? 'Pune' : report.city}</span>
+              </span>
+            </div>
+            <div>
               <span className="text-slate-400 block text-[11px]">Category</span>
               <span className="font-semibold text-slate-700 mt-0.5 block">{report.category}</span>
             </div>

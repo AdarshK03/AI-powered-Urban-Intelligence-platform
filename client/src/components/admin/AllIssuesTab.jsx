@@ -30,6 +30,7 @@ export default function AllIssuesTab({
   const [priorityFilter, setPriorityFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState('All')
   const [deptFilter, setDeptFilter] = useState('All')
+  const [timeFilter, setTimeFilter] = useState('All')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 8
 
@@ -41,18 +42,34 @@ export default function AllIssuesTab({
       if (statusFilter !== 'All' && issue.status !== statusFilter) return false
       if (deptFilter !== 'All' && issue.department !== deptFilter) return false
 
+      if (timeFilter !== 'All') {
+        const rawTime = issue.createdAt || issue.reportedOn || issue.rawReportedAt
+        const issueTime = rawTime ? new Date(rawTime).getTime() : 0
+        const now = Date.now()
+        if (timeFilter === 'Last 1 Hour') {
+          if (!issueTime || now - issueTime > 3600 * 1000) return false
+        } else if (timeFilter === 'Last 24 Hours') {
+          if (!issueTime || now - issueTime > 24 * 3600 * 1000) return false
+        } else if (timeFilter === 'Last 7 Days') {
+          if (!issueTime || now - issueTime > 7 * 24 * 3600 * 1000) return false
+        } else if (timeFilter === 'Last 30 Days') {
+          if (!issueTime || now - issueTime > 30 * 24 * 3600 * 1000) return false
+        }
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const matchTitle = issue.title.toLowerCase().includes(q)
-        const matchLoc = issue.location.toLowerCase().includes(q)
+        const matchLoc = (issue.location || '').toLowerCase().includes(q)
+        const matchCity = (issue.city || '').toLowerCase().includes(q)
         const matchCat = issue.category.toLowerCase().includes(q)
         const matchDept = issue.department && issue.department.toLowerCase().includes(q)
         const matchId = String(issue.id).includes(q)
-        return matchTitle || matchLoc || matchCat || matchDept || matchId
+        return matchTitle || matchLoc || matchCity || matchCat || matchDept || matchId
       }
       return true
     })
-  }, [issues, categoryFilter, priorityFilter, statusFilter, deptFilter, searchQuery])
+  }, [issues, categoryFilter, priorityFilter, statusFilter, deptFilter, timeFilter, searchQuery])
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredIssues.length / itemsPerPage))
@@ -67,14 +84,16 @@ export default function AllIssuesTab({
     setPriorityFilter('All')
     setStatusFilter('All')
     setDeptFilter('All')
+    setTimeFilter('All')
     setCurrentPage(1)
   }
 
   const exportIssuesCSV = () => {
-    const headers = ['ID', 'Title', 'Location', 'Category', 'Priority', 'Status', 'Department', 'Reported On']
+    const headers = ['ID', 'Title', 'City', 'Location', 'Category', 'Priority', 'Status', 'Department', 'Reported On']
     const rows = filteredIssues.map((i) => [
       i.id,
       `"${i.title.replace(/"/g, '""')}"`,
+      `"${((!i.city || i.city === 'All Cities') ? 'Pune' : i.city).replace(/"/g, '""')}"`,
       `"${i.location.replace(/"/g, '""')}"`,
       i.category,
       i.priority,
@@ -127,7 +146,7 @@ export default function AllIssuesTab({
 
       {/* Filter and Search Bar */}
       <div className="bg-white rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           {/* Search */}
           <div className="relative lg:col-span-1">
             <input
@@ -141,6 +160,24 @@ export default function AllIssuesTab({
               className="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          </div>
+
+          {/* Timeframe Filter (Includes Last 1 Hour) */}
+          <div>
+            <select
+              value={timeFilter}
+              onChange={(e) => {
+                setTimeFilter(e.target.value)
+                setCurrentPage(1)
+              }}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-600/20 font-medium"
+            >
+              <option value="All">All Timeframes</option>
+              <option value="Last 1 Hour">⏱️ Last 1 Hour</option>
+              <option value="Last 24 Hours">Last 24 Hours</option>
+              <option value="Last 7 Days">Last 7 Days</option>
+              <option value="Last 30 Days">Last 30 Days</option>
+            </select>
           </div>
 
           {/* Category */}
@@ -204,7 +241,7 @@ export default function AllIssuesTab({
               className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Reset Filters</span>
+              <span>Reset</span>
             </button>
           </div>
         </div>
@@ -254,7 +291,12 @@ export default function AllIssuesTab({
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3.5 text-slate-600 whitespace-nowrap">{issue.location}</td>
+                    <td className="py-3.5 px-3.5 text-slate-600 whitespace-nowrap">
+                      <div className="font-medium text-slate-800">{issue.location}</div>
+                      <div className="text-[11px] text-cyan-700 font-semibold flex items-center gap-1 mt-0.5">
+                        <span>📍 {(!issue.city || issue.city === 'All Cities') ? 'Pune' : issue.city}</span>
+                      </div>
+                    </td>
 
                     <td className="py-3.5 px-3.5 text-slate-600">
                       <span className="font-medium px-2 py-0.5 bg-slate-100 rounded-md text-slate-700">

@@ -3,6 +3,7 @@ import { X, Plus, AlertCircle, MapPin } from 'lucide-react'
 
 export default function NewIssueModal({ isOpen, onClose, onAddIssue, departments, categories }) {
   const [title, setTitle] = useState('')
+  const [city, setCity] = useState('Pune')
   const [location, setLocation] = useState('')
   const [category, setCategory] = useState('Pothole')
   const [priority, setPriority] = useState('High')
@@ -18,6 +19,7 @@ export default function NewIssueModal({ isOpen, onClose, onAddIssue, departments
     const newIssue = {
       id: Date.now(),
       title: title.trim(),
+      city: city || 'Pune',
       location: location.trim(),
       category,
       priority,
@@ -78,19 +80,17 @@ export default function NewIssueModal({ isOpen, onClose, onAddIssue, departments
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-700 font-semibold mb-1 text-xs">
-                Location / Road Landmark *
+                City *
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ring Road, Pillar #42"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full pl-8 pr-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600"
-                />
-                <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
-              </div>
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600 font-medium"
+              >
+                {['Pune', 'New Delhi', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -106,6 +106,23 @@ export default function NewIssueModal({ isOpen, onClose, onAddIssue, departments
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-semibold mb-1 text-xs">
+              Location / Road Landmark *
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                placeholder="e.g. F.C. Road, Shivajinagar"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full pl-8 pr-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600/20 focus:border-cyan-600"
+              />
+              <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
             </div>
           </div>
 

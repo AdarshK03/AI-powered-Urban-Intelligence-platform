@@ -164,10 +164,13 @@ export default function MapViewTab({
               {/* Geo info pills */}
               <div className="space-y-2 text-xs">
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block text-[10px]">Location Coordinates</span>
+                  <span className="text-slate-400 block text-[10px]">Location & City</span>
                   <span className="font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
                     <MapPin className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                     <span className="truncate">{selectedIssue.location || selectedIssue.city || 'Coordinates Plotted'}</span>
+                  </span>
+                  <span className="text-[10px] text-cyan-800 font-semibold block mt-0.5">
+                    📍 {(!selectedIssue.city || selectedIssue.city === 'All Cities') ? 'Pune' : selectedIssue.city}
                   </span>
                   {(selectedIssue.latitude || selectedIssue.lat) && (
                     <span className="text-[10px] text-cyan-700 font-mono block mt-1">

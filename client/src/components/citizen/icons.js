@@ -15,6 +15,8 @@ export {
   User as UserIcon,
   Users as UsersIcon,
   ThumbsUp as ThumbUpIcon,
+  ThumbsDown as ThumbDownIcon,
+  Trash2 as TrashIcon,
   Share2 as ShareIcon,
   LocateFixed as LocateIcon,
   Camera as CameraIcon,

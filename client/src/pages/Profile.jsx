@@ -12,17 +12,20 @@ export default function Profile() {
   const [name, setName] = useState(user?.name || '');
   const [organisation, setOrganisation] = useState(user?.organisation || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [city, setCity] = useState(user?.city || 'Pune');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  const CITY_OPTIONS = ['Pune', 'New Delhi', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'];
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     setMsg('');
-    const res = await updateProfile({ name, organisation, phone });
+    const res = await updateProfile({ name, organisation, phone, city });
     setSaving(false);
     if (res.success) {
-      setMsg('Profile updated successfully in PostgreSQL database!');
+      setMsg('Profile and home city updated successfully!');
       setIsEditing(false);
       setTimeout(() => setMsg(''), 4000);
     } else {
@@ -33,6 +36,7 @@ export default function Profile() {
   const rows = [
     ['Email', user?.email],
     ['Role', user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Citizen'],
+    ['Home City', user?.city || 'Pune'],
     ['Organisation', user?.organisation || 'Not provided'],
     ['Phone', user?.phone || 'Not provided'],
   ];
@@ -42,7 +46,7 @@ export default function Profile() {
       <h1 className="text-xl font-bold text-slate-900">Profile</h1>
 
       {msg && (
-        <div className="mt-4 rounded-xl bg-teal-50 p-3 text-sm font-semibold text-teal-800">
+        <div className="mt-4 rounded-xl bg-teal-50 p-3 text-sm font-semibold text-teal-800 border border-teal-200">
           {msg}
         </div>
       )}
@@ -59,7 +63,7 @@ export default function Profile() {
               {rows.map(([k, v]) => (
                 <div key={k} className="flex gap-3">
                   <dt className="w-28 shrink-0 text-slate-500">{k}</dt>
-                  <dd className="min-w-0 flex-1 break-words text-slate-900">{v}</dd>
+                  <dd className="min-w-0 flex-1 break-words text-slate-900 font-medium">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -70,11 +74,12 @@ export default function Profile() {
                   setName(user?.name || '');
                   setOrganisation(user?.organisation || '');
                   setPhone(user?.phone || '');
+                  setCity(user?.city || 'Pune');
                   setIsEditing(true);
                 }}
                 className={btnOutline}
               >
-                Edit Profile Details
+                Edit Profile & City
               </button>
             </div>
           </>
@@ -89,6 +94,23 @@ export default function Profile() {
                 required
                 className={inputCls}
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Home City / Registered Region</label>
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className={`${inputCls} cursor-pointer`}
+              >
+                {CITY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Your dashboard prioritizes issues in your city. Voting is restricted to your registered city.
+              </p>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-700">Organisation / Community</label>

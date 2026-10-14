@@ -24,6 +24,7 @@ export async function findUserByEmail(email) {
     role: row.role,
     organisation: row.organisation,
     phone: row.phone,
+    city: row.city || 'Pune',
     createdAt: row.created_at,
   };
 }
@@ -41,11 +42,12 @@ export async function findUserById(id) {
     role: row.role,
     organisation: row.organisation,
     phone: row.phone,
+    city: row.city || 'Pune',
     createdAt: row.created_at,
   };
 }
 
-export async function createUser({ name, email, password, role = 'citizen', organisation = '' }) {
+export async function createUser({ name, email, password, role = 'citizen', organisation = '', city = 'Pune' }) {
   const normalizedEmail = email.trim().toLowerCase();
   const existing = await findUserByEmail(normalizedEmail);
   if (existing) {
@@ -57,16 +59,16 @@ export async function createUser({ name, email, password, role = 'citizen', orga
   const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   const res = await query(
-    `INSERT INTO users (id, name, email, password_hash, role, organisation)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, name, email, role, organisation, phone, created_at AS "createdAt"`,
-    [id, name.trim(), normalizedEmail, passwordHash, role || 'citizen', organisation.trim() || 'Civic Participant']
+    `INSERT INTO users (id, name, email, password_hash, role, organisation, city)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, name, email, role, organisation, phone, city, created_at AS "createdAt"`,
+    [id, name.trim(), normalizedEmail, passwordHash, role || 'citizen', organisation.trim() || 'Civic Participant', city.trim() || 'Pune']
   );
 
   return res.rows[0];
 }
 
-export async function updateUserProfile(id, { name, organisation, phone }) {
+export async function updateUserProfile(id, { name, organisation, phone, city }) {
   const updates = [];
   const values = [];
   let idx = 1;
@@ -83,6 +85,10 @@ export async function updateUserProfile(id, { name, organisation, phone }) {
     updates.push(`phone = $${idx++}`);
     values.push(phone.trim());
   }
+  if (city !== undefined) {
+    updates.push(`city = $${idx++}`);
+    values.push(city.trim());
+  }
 
   if (updates.length === 0) return findUserById(id);
 
@@ -91,7 +97,7 @@ export async function updateUserProfile(id, { name, organisation, phone }) {
 
   const res = await query(
     `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}
-     RETURNING id, name, email, role, organisation, phone, created_at AS "createdAt"`,
+     RETURNING id, name, email, role, organisation, phone, city, created_at AS "createdAt"`,
     values
   );
 
@@ -100,7 +106,7 @@ export async function updateUserProfile(id, { name, organisation, phone }) {
 
 export async function getAllUsers() {
   const res = await query(
-    `SELECT id, name, email, role, organisation, phone, created_at AS "createdAt"
+    `SELECT id, name, email, role, organisation, phone, city, created_at AS "createdAt"
      FROM users ORDER BY created_at DESC`
   );
   return res.rows;

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useIssues } from '../context/IssueContext';
+import { useAuth } from '../context/AuthContext';
 import { useNav } from '../hooks/useCitizenNav';
 import { CATEGORIES, SEVERITIES, categoryById } from '../data/demoIssues';
 import IssuePhoto from '../assets/IssuePhotos';
@@ -41,6 +42,7 @@ function Stepper({ step, onGo }) {
 
 export default function ReportIssue() {
   const { addIssue } = useIssues();
+  const { user } = useAuth();
   const { navigate, back } = useNav();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
@@ -48,6 +50,7 @@ export default function ReportIssue() {
     description: '',
     category: 'pothole',
     severity: null,
+    city: user?.city || 'Pune',
     locationName: '',
     coords: null,
     mapPos: null,
@@ -172,6 +175,7 @@ export default function ReportIssue() {
           description: form.description.trim(),
           category: form.category,
           severity: form.severity ?? 'medium',
+          city: form.city || user?.city || 'Pune',
           locationName: form.locationName.trim(),
           latitude: form.coords?.lat ?? null,
           longitude: form.coords?.lng ?? null,
@@ -384,19 +388,36 @@ export default function ReportIssue() {
             </span>
           </div>
 
-          <div className="mt-3">
-            <label htmlFor="location" className={labelCls}>
-              Street, landmark or area
-            </label>
-            <input
-              id="location"
-              value={form.locationName}
-              onChange={(e) => update({ locationName: e.target.value })}
-              placeholder="E.g. Ring Road near Metro Station, Pune / Delhi"
-              aria-invalid={!!errors.location}
-              className={field(errors.location)}
-            />
-            {errors.location && <p role="alert" className={errorCls}>{errors.location}</p>}
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-1">
+              <label htmlFor="issue-city" className={labelCls}>
+                City
+              </label>
+              <select
+                id="issue-city"
+                value={form.city}
+                onChange={(e) => update({ city: e.target.value })}
+                className={`${inputCls} cursor-pointer`}
+              >
+                {['Pune', 'New Delhi', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="location" className={labelCls}>
+                Street, landmark or area
+              </label>
+              <input
+                id="location"
+                value={form.locationName}
+                onChange={(e) => update({ locationName: e.target.value })}
+                placeholder="E.g. Ring Road near Metro Station"
+                aria-invalid={!!errors.location}
+                className={field(errors.location)}
+              />
+              {errors.location && <p role="alert" className={errorCls}>{errors.location}</p>}
+            </div>
           </div>
 
           <div className="mt-3 flex items-center gap-2">

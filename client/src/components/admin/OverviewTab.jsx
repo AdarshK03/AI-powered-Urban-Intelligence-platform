@@ -467,7 +467,12 @@ export default function OverviewTab({
                         <div className="text-[11px] text-slate-400 truncate max-w-xs">{report.department}</div>
                       )}
                     </td>
-                    <td className="py-3.5 px-3.5 text-slate-600">{report.location}</td>
+                    <td className="py-3.5 px-3.5 text-slate-600">
+                      <div className="font-medium text-slate-800">{report.location}</div>
+                      <div className="text-[11px] text-cyan-700 font-semibold flex items-center gap-1 mt-0.5">
+                        <span>📍 {(!report.city || report.city === 'All Cities') ? 'Pune' : report.city}</span>
+                      </div>
+                    </td>
                     <td className="py-3.5 px-3.5 text-slate-600">
                       <span className="font-medium">{report.category}</span>
                     </td>

@@ -7,8 +7,8 @@ export default function LoginScreen({ onLogin, onBack }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { login, isLoading } = useAuth()
-  const [email, setEmail] = useState('admin@urban-intelligence.gov.in')
-  const [password, setPassword] = useState('admin123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
 
   const handleBack = () => {

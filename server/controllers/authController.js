@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { findUserByEmail, createUser, updateUserProfile } from '../data/users.js';
+import { query } from '../config/db.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -96,13 +97,67 @@ export async function register(req, res) {
   try {
     const { name, email, password, role, organisation } = req.body || {};
 
-    if (!name || typeof name !== 'string' || !name.trim()) {
+    // 1. Full name validation:
+    // Cannot start or end with number or special character, cannot contain numbers
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) {
       return res.status(400).json({
         success: false,
         message: 'Full name is required.'
       });
     }
 
+    if (trimmedName.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name must be at least 4 characters long.'
+      });
+    }
+
+    const firstChar = trimmedName[0];
+    const lastChar = trimmedName[trimmedName.length - 1];
+
+    if (/[0-9]/.test(firstChar)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot start with a number.'
+      });
+    }
+    if (!/^[a-zA-Z]$/.test(firstChar)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot start with a special character.'
+      });
+    }
+
+    if (/[0-9]/.test(lastChar)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot end with a number.'
+      });
+    }
+    if (!/^[a-zA-Z]$/.test(lastChar)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot end with a special character.'
+      });
+    }
+
+    if (/[0-9]/.test(trimmedName)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot contain numbers.'
+      });
+    }
+
+    if (/[^a-zA-Z\s]/.test(trimmedName)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name cannot contain special characters (only letters and spaces allowed).'
+      });
+    }
+
+    // 2. Email validation
     if (!email || typeof email !== 'string' || !email.trim()) {
       return res.status(400).json({
         success: false,
@@ -119,6 +174,7 @@ export async function register(req, res) {
       });
     }
 
+    // 3. Password validation
     if (!password || typeof password !== 'string' || password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -126,6 +182,7 @@ export async function register(req, res) {
       });
     }
 
+    // 4. Duplicate email check
     const existingUser = await findUserByEmail(cleanEmail);
     if (existingUser) {
       return res.status(409).json({
@@ -134,18 +191,62 @@ export async function register(req, res) {
       });
     }
 
-    let assignedRole = role || 'citizen';
-    if (cleanEmail.endsWith('.gov.in') || cleanEmail.includes('admin')) {
-      assignedRole = 'admin';
+    // 5. Role determination & Admin signup prevention
+    let assignedRole = (role || 'citizen').toLowerCase();
+    if (assignedRole === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin accounts cannot be created via public registration.'
+      });
     }
 
+    if (!['citizen', 'crew'].includes(assignedRole)) {
+      assignedRole = 'citizen';
+    }
+
+    let assignedOrg = (organisation || '').trim();
+    if (assignedRole === 'crew') {
+      if (!assignedOrg) {
+        return res.status(400).json({
+          success: false,
+          message: 'Crew / Organisation name is required for crew leaders.'
+        });
+      }
+    } else if (assignedRole === 'admin') {
+      if (!assignedOrg) {
+        assignedOrg = 'Municipal Governance Authority';
+      }
+    } else {
+      assignedOrg = 'Civic Participant';
+    }
+
+    // 6. Persist user credentials in DB
     const newUser = await createUser({
-      name,
+      name: trimmedName,
       email: cleanEmail,
       password,
       role: assignedRole,
-      organisation: organisation || ''
+      organisation: assignedOrg
     });
+
+    // 7. If crew leader, sync with crews table adhering to DB schema
+    if (assignedRole === 'crew') {
+      try {
+        const existingCrew = await query('SELECT id FROM crews WHERE LOWER(name) = $1 LIMIT 1', [assignedOrg.toLowerCase()]);
+        if (existingCrew.rows.length === 0) {
+          const crewId = `crew_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          await query(
+            `INSERT INTO crews (id, name, specialty, leader, members, status)
+             VALUES ($1, $2, $3, $4, 4, 'Available')`,
+            [crewId, assignedOrg, 'Road Repair & Field Operations', trimmedName]
+          );
+        } else {
+          await query('UPDATE crews SET leader = $1 WHERE id = $2', [trimmedName, existingCrew.rows[0].id]);
+        }
+      } catch (crewSyncErr) {
+        console.warn('Notice: Failed to sync crew record during registration:', crewSyncErr.message);
+      }
+    }
 
     const token = jwt.sign(
       {
@@ -195,8 +296,8 @@ export async function getProfile(req, res) {
  */
 export async function updateProfile(req, res) {
   try {
-    const { name, organisation, phone } = req.body || {};
-    const updatedUser = await updateUserProfile(req.user.id, { name, organisation, phone });
+    const { name, organisation, phone, city } = req.body || {};
+    const updatedUser = await updateUserProfile(req.user.id, { name, organisation, phone, city });
     return res.status(200).json({
       success: true,
       message: 'Profile updated successfully.',

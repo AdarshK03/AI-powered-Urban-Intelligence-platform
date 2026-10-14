@@ -44,7 +44,8 @@ function processUploadedPhotos(photosList, issueId) {
   });
 }
 
-function formatIssue(row, comments = [], userSupported = false) {
+function formatIssue(row, comments = [], userVote = null) {
+  const isUpvoted = userVote === 'up' || userVote === true;
   return {
     id: row.id,
     referenceNumber: row.reference_number,
@@ -78,7 +79,8 @@ function formatIssue(row, comments = [], userSupported = false) {
       text: c.text,
       at: new Date(c.created_at).toISOString(),
     })),
-    hasSupported: userSupported,
+    hasSupported: isUpvoted,
+    userVote: typeof userVote === 'string' ? userVote : isUpvoted ? 'up' : null,
   };
 }
 
@@ -142,15 +144,17 @@ export async function getIssues(req, res) {
       commentsByIssue[c.issue_id].push(c);
     }
 
-    // Check user supports if logged in
-    let userSupports = new Set();
+    // Check user votes if logged in
+    const userVotes = {};
     if (req.user) {
-      const supRes = await query('SELECT issue_id FROM issue_supports WHERE user_id = $1', [req.user.id]);
-      userSupports = new Set(supRes.rows.map((r) => r.issue_id));
+      const supRes = await query('SELECT issue_id, vote_type FROM issue_supports WHERE user_id = $1', [req.user.id]);
+      for (const r of supRes.rows) {
+        userVotes[r.issue_id] = r.vote_type || 'up';
+      }
     }
 
     const formatted = issuesRes.rows.map((row) =>
-      formatIssue(row, commentsByIssue[row.id] || [], userSupports.has(row.id))
+      formatIssue(row, commentsByIssue[row.id] || [], userVotes[row.id] || null)
     );
 
     return res.json({
@@ -181,18 +185,20 @@ export async function getIssueById(req, res) {
       [id]
     );
 
-    let userSupported = false;
+    let userVote = null;
     if (req.user) {
       const supRes = await query(
-        'SELECT 1 FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
+        'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
         [id, req.user.id]
       );
-      userSupported = supRes.rows.length > 0;
+      if (supRes.rows.length > 0) {
+        userVote = supRes.rows[0].vote_type || 'up';
+      }
     }
 
     return res.json({
       success: true,
-      issue: formatIssue(issueRes.rows[0], commentsRes.rows, userSupported),
+      issue: formatIssue(issueRes.rows[0], commentsRes.rows, userVote),
     });
   } catch (err) {
     console.error('Error in getIssueById:', err);
@@ -210,13 +216,24 @@ export async function createIssue(req, res) {
       description,
       category,
       severity = 'medium',
-      city = 'New Delhi',
+      city,
       locationName,
       latitude,
       longitude,
       mapPos,
       photos = [],
     } = req.body || {};
+
+    let resolvedCity = (city || '').trim();
+    if (!resolvedCity || resolvedCity === 'All Cities' || resolvedCity.toLowerCase() === 'all') {
+      if (locationName && /pune/i.test(locationName)) {
+        resolvedCity = 'Pune';
+      } else if (req.user?.city) {
+        resolvedCity = req.user.city;
+      } else {
+        resolvedCity = 'Pune';
+      }
+    }
 
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Issue title is required.' });
@@ -231,9 +248,15 @@ export async function createIssue(req, res) {
     const referenceNumber = `UI-${new Date().getFullYear()}-${String(seq).padStart(4, '0')}`;
     const id = `iss_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const nowIso = new Date().toISOString();
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please sign in to report an issue.'
+      });
+    }
 
-    const reporterId = req.user ? req.user.id : null;
-    const reporterName = req.user ? req.user.name : 'Citizen User';
+    const reporterId = req.user.id;
+    const reporterName = req.user.name || 'Citizen User';
 
     const timeline = [
       {
@@ -270,8 +293,8 @@ export async function createIssue(req, res) {
       description ? description.trim() : '',
       category,
       severity,
-      city,
-      locationName ? locationName.trim() : city,
+      resolvedCity,
+      locationName ? locationName.trim() : resolvedCity,
       latitude ?? null,
       longitude ?? null,
       mapPos ? JSON.stringify(mapPos) : null,
@@ -288,7 +311,7 @@ export async function createIssue(req, res) {
        VALUES ($1, $2, $3, $4)`,
       [
         `New Civic Report: ${title.trim()}`,
-        `Reported in ${city} (${locationName || 'General zone'}) with ${severity.toUpperCase()} priority. Reference: ${referenceNumber}`,
+        `Reported in ${resolvedCity} (${locationName || 'General zone'}) with ${severity.toUpperCase()} priority. Reference: ${referenceNumber}`,
         severity === 'high' ? 'urgent' : 'info',
         id,
       ]
@@ -308,43 +331,110 @@ export async function createIssue(req, res) {
 }
 
 /**
- * Toggle or add support (upvote)
+ * Vote on issue (Upvote / Downvote)
+ * Author cannot vote on their own report
  */
 export async function supportIssue(req, res) {
   try {
     const { id } = req.params;
-    const userId = req.user ? req.user.id : req.body.userId || 'anon_user';
+    const { voteType = 'up' } = req.body || {};
+    const userId = req.user ? req.user.id : req.body.userId;
 
-    // Check if already supported
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to vote.' });
+    }
+
+    // 1. Check issue existence, ownership, and city restriction
+    const issueRes = await query('SELECT reporter_id, support_count, city FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (!issueRes.rows.length) {
+      return res.status(404).json({ success: false, message: 'Issue not found.' });
+    }
+
+    const issue = issueRes.rows[0];
+
+    // REQUIREMENT: Cannot vote on own reported issue
+    if (issue.reporter_id && issue.reporter_id === userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot vote on your own reported issue.'
+      });
+    }
+
+    // REQUIREMENT 3: Citizens can view issues in other cities, but cannot vote on issues outside their registered city
+    let userCity = req.user?.city;
+    if (!userCity) {
+      const uRes = await query('SELECT city FROM users WHERE id = $1 LIMIT 1', [userId]);
+      userCity = uRes.rows[0]?.city || 'Pune';
+    }
+
+    if (
+      userCity &&
+      issue.city &&
+      issue.city.toLowerCase() !== 'all cities' &&
+      issue.city.toLowerCase() !== userCity.toLowerCase()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: `Voting is restricted to residents of ${issue.city}. Your registered city is ${userCity}.`,
+      });
+    }
+
+    // Ensure vote_type column exists
+    await query(`ALTER TABLE issue_supports ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'`).catch(() => {});
+
+    // Check existing vote
     const existing = await query(
-      'SELECT 1 FROM issue_supports WHERE issue_id = $1 AND user_id = $2',
+      'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
       [id, userId]
     );
 
-    let supported = false;
+    let finalVote = null;
     if (existing.rows.length > 0) {
-      // Remove upvote
-      await query('DELETE FROM issue_supports WHERE issue_id = $1 AND user_id = $2', [id, userId]);
-      await query('UPDATE issues SET support_count = GREATEST(0, support_count - 1), updated_at = NOW() WHERE id = $1', [id]);
-      supported = false;
+      const currentVote = existing.rows[0].vote_type || 'up';
+      if (currentVote === voteType) {
+        // Toggling off the same vote
+        await query('DELETE FROM issue_supports WHERE issue_id = $1 AND user_id = $2', [id, userId]);
+        finalVote = null;
+      } else {
+        // Switching vote (e.g. from down to up or up to down)
+        await query('UPDATE issue_supports SET vote_type = $1, created_at = NOW() WHERE issue_id = $2 AND user_id = $3', [voteType, id, userId]);
+        finalVote = voteType;
+      }
     } else {
-      // Add upvote
-      await query('INSERT INTO issue_supports (issue_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, userId]);
-      await query('UPDATE issues SET support_count = support_count + 1, updated_at = NOW() WHERE id = $1', [id]);
-      supported = true;
+      // New vote
+      await query(
+        'INSERT INTO issue_supports (issue_id, user_id, vote_type) VALUES ($1, $2, $3) ON CONFLICT (issue_id, user_id) DO UPDATE SET vote_type = EXCLUDED.vote_type',
+        [id, userId, voteType]
+      );
+      finalVote = voteType;
     }
 
-    const updatedIssue = await query('SELECT support_count FROM issues WHERE id = $1', [id]);
-    const supportCount = updatedIssue.rows.length ? updatedIssue.rows[0].support_count : 0;
+    // Recalculate support score (count of up votes minus down votes, min 0)
+    const countRes = await query(
+      `SELECT 
+         COUNT(*) FILTER (WHERE vote_type = 'up' OR vote_type IS NULL) AS up_count,
+         COUNT(*) FILTER (WHERE vote_type = 'down') AS down_count
+       FROM issue_supports WHERE issue_id = $1`,
+      [id]
+    );
+
+    const upCount = parseInt(countRes.rows[0].up_count, 10) || 0;
+    const downCount = parseInt(countRes.rows[0].down_count, 10) || 0;
+    const netScore = Math.max(0, upCount - downCount);
+
+    await query('UPDATE issues SET support_count = $1, updated_at = NOW() WHERE id = $2', [netScore, id]);
 
     return res.json({
       success: true,
-      supported,
-      supportCount,
+      userVote: finalVote,
+      hasSupported: finalVote === 'up',
+      supportCount: netScore,
+      upCount,
+      downCount,
     });
   } catch (err) {
     console.error('Error in supportIssue:', err);
-    return res.status(500).json({ success: false, message: 'Failed to update support status.' });
+    return res.status(500).json({ success: false, message: 'Failed to process vote.' });
   }
 }
 
@@ -463,15 +553,163 @@ export async function updateIssueStatus(req, res) {
 }
 
 /**
- * Delete issue
+ * Delete issue (Permitted for the citizen author or municipal admin)
  */
 export async function deleteIssue(req, res) {
   try {
     const { id } = req.params;
+    const currentUserId = req.user ? req.user.id : null;
+    const currentUserRole = req.user ? req.user.role : null;
+
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to remove a report.' });
+    }
+
+    const issueRes = await query('SELECT id, reporter_id, photos FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (!issueRes.rows.length) {
+      return res.status(404).json({ success: false, message: 'Issue report not found.' });
+    }
+
+    const issue = issueRes.rows[0];
+
+    // Authorization: only the author or an admin can delete the report
+    if (issue.reporter_id !== currentUserId && currentUserRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You can only remove reports that you posted.'
+      });
+    }
+
+    // Delete photos if stored on disk in uploads/
+    try {
+      const photos = Array.isArray(issue.photos) ? issue.photos : JSON.parse(issue.photos || '[]');
+      for (const p of photos) {
+        if (p.url && p.url.startsWith('/uploads/')) {
+          const filePath = path.join(__dirname, '..', p.url);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('Could not clean up uploaded photos on delete:', cleanupErr.message);
+    }
+
+    // Delete related records and issue
+    await query('DELETE FROM issue_comments WHERE issue_id = $1', [id]);
+    await query('DELETE FROM issue_supports WHERE issue_id = $1', [id]);
+    await query('DELETE FROM notifications WHERE issue_id = $1', [id]);
     await query('DELETE FROM issues WHERE id = $1', [id]);
-    return res.json({ success: true, message: 'Issue deleted successfully.' });
+
+    return res.json({
+      success: true,
+      message: 'Civic issue report has been permanently removed.'
+    });
   } catch (err) {
     console.error('Error in deleteIssue:', err);
-    return res.status(500).json({ success: false, message: 'Failed to delete issue.' });
+    return res.status(500).json({ success: false, message: 'Failed to delete issue report.' });
+  }
+}
+
+/**
+ * Get notifications feed for citizen portal:
+ * Exclusively returns updates on the user's reported issues:
+ * 1. Comments on user's reported issues
+ * 2. Upvotes and Downvotes on user's reported issues
+ * Generic new reports are removed (they live on the dashboard).
+ */
+export async function getNotifications(req, res) {
+  try {
+    const currentUserId = req.user ? req.user.id : null;
+    let commentsOnMyReports = [];
+    let votesOnMyReports = [];
+
+    if (currentUserId) {
+      // 1. Comments made on issues where reporter_id is current user, but comment author is someone else
+      const commentsRes = await query(
+        `SELECT 
+           c.id AS comment_id,
+           c.text AS comment_text,
+           c.author_name AS comment_author,
+           c.created_at AS comment_created_at,
+           i.id AS issue_id,
+           i.title AS issue_title,
+           i.reference_number AS issue_reference,
+           i.category AS issue_category
+         FROM issue_comments c
+         JOIN issues i ON c.issue_id = i.id
+         WHERE i.reporter_id = $1 AND (c.user_id != $1 OR c.user_id IS NULL)
+         ORDER BY c.created_at DESC
+         LIMIT 20`,
+        [currentUserId]
+      );
+
+      commentsOnMyReports = commentsRes.rows.map((row) => ({
+        id: `notif_c_${row.comment_id}`,
+        type: 'comment',
+        priority: 'high',
+        isCommentOnMyReport: true,
+        issueId: row.issue_id,
+        issueTitle: row.issue_title,
+        referenceNumber: row.issue_reference,
+        author: row.comment_author,
+        message: `${row.comment_author} commented on your report: "${row.comment_text.length > 55 ? row.comment_text.substring(0, 55) + '...' : row.comment_text}"`,
+        createdAt: row.comment_created_at,
+      }));
+
+      // 2. Upvotes & Downvotes on issues where reporter_id is current user, by someone else
+      const votesRes = await query(
+        `SELECT 
+           s.id AS support_id,
+           s.vote_type,
+           s.created_at AS vote_created_at,
+           s.user_id AS voter_id,
+           u.name AS voter_name,
+           i.id AS issue_id,
+           i.title AS issue_title,
+           i.reference_number AS issue_reference
+         FROM issue_supports s
+         JOIN issues i ON s.issue_id = i.id
+         LEFT JOIN users u ON s.user_id = u.id
+         WHERE i.reporter_id = $1 AND s.user_id != $1
+         ORDER BY s.created_at DESC
+         LIMIT 20`,
+        [currentUserId]
+      );
+
+      votesOnMyReports = votesRes.rows.map((row) => {
+        const isUp = (row.vote_type || 'up') === 'up';
+        const voterName = row.voter_name || 'A citizen';
+        return {
+          id: `notif_v_${row.support_id}`,
+          type: 'vote',
+          voteType: row.vote_type || 'up',
+          priority: 'high',
+          isVoteOnMyReport: true,
+          issueId: row.issue_id,
+          issueTitle: row.issue_title,
+          referenceNumber: row.issue_reference,
+          author: voterName,
+          message: `${voterName} ${isUp ? 'upvoted (supported)' : 'downvoted'} your report: "${row.issue_title}"`,
+          createdAt: row.vote_created_at,
+        };
+      });
+    }
+
+    // Combined notifications on user's reports sorted chronologically
+    const allNotifications = [...commentsOnMyReports, ...votesOnMyReports].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    return res.json({
+      success: true,
+      notifications: allNotifications,
+      commentsOnMyReports,
+      votesOnMyReports,
+      totalUnread: allNotifications.length,
+    });
+  } catch (err) {
+    console.error('Error in getNotifications:', err);
+    return res.status(500).json({ success: false, message: 'Could not fetch notifications.' });
   }
 }

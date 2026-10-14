@@ -1,25 +1,40 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useIssues } from '../context/IssueContext';
+import { useAuth } from '../context/AuthContext';
 import { useNav } from '../hooks/useCitizenNav';
 import { SEVERITIES, categoryById, formatDateTime } from '../data/demoIssues';
 import IssuePhoto from '../assets/IssuePhotos';
-import { ArrowLeftIcon, CheckIcon, ClockIcon, FileIcon, PinIcon, ShareIcon, ShieldAlertIcon, ThumbUpIcon, UserIcon, UsersIcon } from '../components/citizen/icons';
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  ClockIcon,
+  FileIcon,
+  PinIcon,
+  ShareIcon,
+  ShieldAlertIcon,
+  ThumbUpIcon,
+  ThumbDownIcon,
+  TrashIcon,
+  UserIcon,
+  UsersIcon,
+} from '../components/citizen/icons';
 import { StatusBadge } from '../components/citizen/SeverityBadge';
 import GoogleMapView from '../components/common/GoogleMapView';
 import { btnPrimary, errorCls, focusRing, inputBad, inputCls, inputOk } from '../components/citizen/ui';
- 
+
 const STATUS_ICONS = { reported: UserIcon, verified: CheckIcon, assigned: FileIcon, in_progress: ClockIcon, resolved: CheckIcon };
 const TABS = [['timeline', 'Timeline'], ['details', 'Details'], ['comments', 'Comments']];
- 
+
 export default function IssueDetails() {
   const { id } = useParams();
   return <IssueDetailsView key={id} id={id} />;
 }
- 
+
 function IssueDetailsView({ id }) {
-  const { back } = useNav();
-  const { getIssue, supportIssue, hasSupported, addComment } = useIssues();
+  const { back, navigate } = useNav();
+  const { user } = useAuth();
+  const { getIssue, supportIssue, getUserVote, deleteIssue, addComment } = useIssues();
   const issueFromContext = getIssue(id);
   const [fetchedIssue, setFetchedIssue] = useState(null);
   const [loading, setLoading] = useState(!issueFromContext);
@@ -28,6 +43,9 @@ function IssueDetailsView({ id }) {
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
+  const [voteError, setVoteError] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!issueFromContext && id) {
@@ -64,9 +82,55 @@ function IssueDetailsView({ id }) {
   }
  
   const sev = SEVERITIES[issue.severity];
-  const supported = hasSupported(issue.id);
   const cat = categoryById(issue.category);
- 
+  const userCity = user?.city || 'Pune';
+  const issueCity = issue.city || 'Pune';
+  const isDifferentCity = Boolean(
+    userCity &&
+    issueCity &&
+    issueCity.toLowerCase() !== 'all cities' &&
+    issueCity.toLowerCase() !== userCity.toLowerCase()
+  );
+  const isOwner = Boolean(
+    user?.id &&
+      (issue.reporterId === user.id ||
+        issue.reporter_id === user.id ||
+        issue.userId === user.id ||
+        String(issue.reporterId) === String(user.id))
+  );
+  const currentVote = getUserVote(issue.id);
+
+  const handleVote = async (voteType) => {
+    if (isOwner) {
+      setVoteError('You cannot vote on your own reported issue.');
+      return;
+    }
+    if (isDifferentCity) {
+      setVoteError(`Voting is restricted to residents of ${issueCity}. Your registered city is ${userCity}.`);
+      return;
+    }
+    try {
+      setVoteError('');
+      await supportIssue(issue.id, voteType);
+    } catch (err) {
+      setVoteError(err.message || 'Unable to register vote.');
+    }
+  };
+
+  const handleDeleteReport = async () => {
+    try {
+      setIsDeleting(true);
+      setVoteError('');
+      await deleteIssue(issue.id);
+      setShowDeleteModal(false);
+      navigate('myreports', {}, { replace: true });
+    } catch (err) {
+      setVoteError(err.message || 'Failed to remove report.');
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
   const share = async () => {
     const text = `${issue.title} (${issue.referenceNumber}) on Urban Intelligence Platform`;
     const url = window.location.href;
@@ -81,7 +145,7 @@ function IssueDetailsView({ id }) {
       setShareMsg('Sharing was cancelled or not supported.');
     }
   };
- 
+
   const postComment = async (e) => {
     e.preventDefault();
     const text = commentText.trim();
@@ -91,7 +155,7 @@ function IssueDetailsView({ id }) {
     setCommentText('');
     setCommentError('');
   };
- 
+
   return (
     <div className="pb-32 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8 lg:p-8 lg:pb-10">
       <div>
@@ -110,11 +174,21 @@ function IssueDetailsView({ id }) {
           </div>
         )}
       </div>
- 
+
       <div className="px-4 pt-3 lg:px-0">
-        <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold ${sev.solid}`}>
-          <ShieldAlertIcon className="h-3.5 w-3.5" />{sev.label} Priority
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold ${sev.solid}`}>
+            <ShieldAlertIcon className="h-3.5 w-3.5" />{sev.label} Priority
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 border border-cyan-200">
+            📍 {issueCity}
+          </span>
+          {isOwner && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 border border-teal-200">
+              <UserIcon className="h-3.5 w-3.5" />Your Reported Issue
+            </span>
+          )}
+        </div>
         <h1 className="mt-2 text-xl font-bold text-slate-900">{issue.title}</h1>
         <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600"><PinIcon className="h-4 w-4 shrink-0 text-teal-700" />{issue.locationName}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-700">
@@ -239,24 +313,116 @@ function IssueDetailsView({ id }) {
       </section>
  
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-md border-t border-slate-200 bg-white px-4 pb-3 pt-3 md:max-w-2xl lg:static lg:z-auto lg:mx-0 lg:mt-6 lg:max-w-none lg:border-0 lg:px-0 lg:pb-0 lg:pt-0">
+        {voteError && (
+          <p role="alert" className="mb-2 text-center text-xs font-semibold text-rose-600">
+            {voteError}
+          </p>
+        )}
         <div className="flex gap-2">
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={isDeleting}
+              aria-label="Remove this reported issue"
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 active:bg-rose-800 disabled:opacity-60 transition-colors cursor-pointer"
+            >
+              <TrashIcon className="h-5 w-5" />
+              {isDeleting ? 'Removing Report...' : 'Remove My Report'}
+            </button>
+          ) : isDifferentCity ? (
+            <div className="flex-1 rounded-xl bg-slate-100 border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600 flex items-center justify-center gap-1.5">
+              <span>📍 Viewing {issueCity} report. Voting is reserved for {issueCity} residents.</span>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => handleVote('up')}
+                aria-label={currentVote === 'up' ? 'Remove upvote' : 'Upvote this issue'}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer transition-all ${
+                  currentVote === 'up'
+                    ? 'bg-teal-600 text-white shadow-md'
+                    : 'bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200'
+                }`}
+              >
+                <ThumbUpIcon className="h-4 w-4" />
+                {currentVote === 'up' ? 'Upvoted' : 'Upvote'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVote('down')}
+                aria-label={currentVote === 'down' ? 'Remove downvote' : 'Downvote this issue'}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer transition-all ${
+                  currentVote === 'down'
+                    ? 'bg-rose-600 text-white shadow-md'
+                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                }`}
+              >
+                <ThumbDownIcon className="h-4 w-4" />
+                {currentVote === 'down' ? 'Downvoted' : 'Downvote'}
+              </button>
+            </>
+          )}
           <button
             type="button"
-            onClick={() => supportIssue(issue.id)}
-            aria-label={supported ? 'Remove upvote' : 'Support / Upvote this issue'}
-            className={`${btnPrimary} flex-1`}
+            onClick={share}
+            aria-label="Share this issue"
+            className={`flex w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 ${focusRing}`}
           >
-            {supported ? <CheckIcon className="h-5 w-5" /> : <ThumbUpIcon className="h-5 w-5" />}
-            {supported ? 'Upvoted' : 'Support (Vote)'}
-          </button>
-          <button type="button" onClick={share} aria-label="Share this issue" className={`flex w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 ${focusRing}`}>
             <ShareIcon className="h-5 w-5" />
           </button>
         </div>
         <p role="status" className="mt-1.5 text-center text-[11px] text-slate-500">
-          {shareMsg || 'Every citizen upvote raises the priority in the municipal repair schedule.'}
+          {shareMsg ||
+            (isOwner
+              ? 'You created this report. You can remove it anytime from municipal tracking.'
+              : isDifferentCity
+              ? `You can inspect and track civic reports in ${issueCity}, but voting is only permitted for your registered home city (${userCity}).`
+              : 'Community votes directly influence municipal dispatch priority.')}
         </p>
       </div>
+
+      {showDeleteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600 mx-auto">
+              <TrashIcon className="h-6 w-6" />
+            </div>
+            <div className="text-center">
+              <h3 id="delete-dialog-title" className="text-lg font-bold text-slate-900">
+                Remove Civic Report?
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Are you sure you want to permanently remove this report (<span className="font-mono font-semibold">{issue.referenceNumber}</span>)? It will be deleted from public municipal tracking and cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteReport}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-semibold text-white hover:bg-rose-700 active:bg-rose-800 disabled:opacity-60 cursor-pointer shadow-sm"
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

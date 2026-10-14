@@ -137,9 +137,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Register a new user
+   * Register a new user (supports citizen, crew, admin roles)
    */
-  const register = useCallback(async ({ name, email, password, confirmPassword, organisation }) => {
+  const register = useCallback(async ({ name, email, password, confirmPassword, role = 'citizen', organisation }) => {
     setIsLoading(true);
     setAuthError(null);
 
@@ -149,7 +149,7 @@ export function AuthProvider({ children }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, password, confirmPassword, organisation }),
+        body: JSON.stringify({ name, email, password, confirmPassword, role, organisation }),
       });
 
       const data = await response.json();
@@ -225,7 +225,7 @@ export function AuthProvider({ children }) {
   /**
    * Update authenticated user profile
    */
-  const updateProfile = useCallback(async ({ name, organisation, phone }) => {
+  const updateProfile = useCallback(async ({ name, organisation, phone, city }) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
         method: 'PUT',
@@ -233,7 +233,7 @@ export function AuthProvider({ children }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, organisation, phone }),
+        body: JSON.stringify({ name, organisation, phone, city }),
       });
       const data = await response.json();
       if (response.ok && data.success) {

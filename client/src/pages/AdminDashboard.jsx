@@ -156,7 +156,7 @@ const INITIAL_CREWS = [
 const INITIAL_NOTIFICATIONS = []
 
 // Timeframes for admin filtering
-const TIME_PERIODS = ['Last 30 Days', 'Last 7 Days', 'Last 24 Hours', 'Last 90 Days']
+const TIME_PERIODS = ['Last 1 Hour', 'Last 24 Hours', 'Last 7 Days', 'Last 30 Days', 'Last 90 Days']
 
 // Zeroed empty state for clean dynamic hydration
 const EMPTY_DASHBOARD_DATA = {
@@ -259,7 +259,9 @@ export default function AdminDashboard({ onExit } = {}) {
         const reports = issues.map((row) => ({
           id: row.id,
           title: row.title,
-          location: row.location_name || row.location || row.city,
+          city: (!row.city || row.city === 'All Cities') ? 'Pune' : row.city,
+          location: row.location_name || row.location || row.city || 'Pune',
+          locationName: row.location_name || row.location || 'Pune',
           latitude: row.latitude ? parseFloat(row.latitude) : null,
           longitude: row.longitude ? parseFloat(row.longitude) : null,
           lat: row.latitude ? parseFloat(row.latitude) : null,
@@ -272,6 +274,7 @@ export default function AdminDashboard({ onExit } = {}) {
             month: 'short',
             year: 'numeric',
           }),
+          createdAt: row.created_at || row.reported_at,
           department: row.department || 'Public Works Department (PWD)',
           details: row.description || row.details || '',
           assignedCrew: row.assigned_crew || null,
@@ -417,7 +420,7 @@ export default function AdminDashboard({ onExit } = {}) {
         category: categoryMap[newIssue.category] || newIssue.category.toLowerCase(),
         severity: (newIssue.priority || 'Medium').toLowerCase(),
         locationName: newIssue.location,
-        city: 'New Delhi',
+        city: newIssue.city || 'Pune',
         department: newIssue.department,
       }
 
@@ -533,10 +536,10 @@ export default function AdminDashboard({ onExit } = {}) {
       prev.map((c) =>
         c.id === crewId
           ? {
-              ...c,
-              status: newStatus,
-              assignedIssueId: newStatus === 'Available' ? null : c.assignedIssueId,
-            }
+            ...c,
+            status: newStatus,
+            assignedIssueId: newStatus === 'Available' ? null : c.assignedIssueId,
+          }
           : c
       )
     )
@@ -559,7 +562,7 @@ export default function AdminDashboard({ onExit } = {}) {
         method: 'PATCH',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-    } catch (e) {}
+    } catch (e) { }
     showToast('All notifications marked as read', 'success')
   }
 
@@ -572,7 +575,7 @@ export default function AdminDashboard({ onExit } = {}) {
         method: 'PATCH',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const handleDeleteNotification = (id) => {
@@ -613,7 +616,7 @@ export default function AdminDashboard({ onExit } = {}) {
     { name: 'Assignments', icon: ClipboardList },
     { name: 'Departments', icon: Building2 },
     { name: 'Analytics', icon: TrendingUp },
-    { name: 'Reports', icon: FileText },
+    // { name: 'Reports', icon: FileText },
     { name: 'Notifications', icon: Bell, badge: unreadNotificationCount },
     { name: 'Settings', icon: Settings },
   ]
@@ -635,9 +638,8 @@ export default function AdminDashboard({ onExit } = {}) {
 
       {/* Sidebar matching the dark teal/cyan styling */}
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-[242px] bg-[#0c3947] text-slate-200 flex flex-col justify-between py-5 px-3.5 transition-transform duration-300 ease-in-out shrink-0 ${
-          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-[242px] bg-[#0c3947] text-slate-200 flex flex-col justify-between py-5 px-3.5 transition-transform duration-300 ease-in-out shrink-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
       >
         <div>
           {/* Logo brand item */}
@@ -675,11 +677,10 @@ export default function AdminDashboard({ onExit } = {}) {
                     setActiveNav(item.name)
                     setMobileMenuOpen(false)
                   }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors text-left cursor-pointer ${
-                    isActive
-                      ? 'bg-gradient-to-r from-[#0c6b82] to-[#0a5c70] text-white shadow-[0_2px_8px_rgba(12,107,130,0.4)]'
-                      : 'text-slate-300 hover:text-white hover:bg-white/5'
-                  }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors text-left cursor-pointer ${isActive
+                    ? 'bg-gradient-to-r from-[#0c6b82] to-[#0a5c70] text-white shadow-[0_2px_8px_rgba(12,107,130,0.4)]'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    }`}
                 >
                   <div className="flex items-center gap-3.5">
                     <Icon className={`w-[17px] h-[17px] ${isActive ? 'text-white' : 'text-slate-300'}`} />
@@ -793,11 +794,10 @@ export default function AdminDashboard({ onExit } = {}) {
                     <button
                       key={period}
                       onClick={() => handlePeriodChange(period)}
-                      className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm flex items-center justify-between hover:bg-slate-50 cursor-pointer ${
-                        selectedPeriod === period
-                          ? 'text-cyan-800 font-semibold bg-cyan-50/60'
-                          : 'text-slate-600'
-                      }`}
+                      className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm flex items-center justify-between hover:bg-slate-50 cursor-pointer ${selectedPeriod === period
+                        ? 'text-cyan-800 font-semibold bg-cyan-50/60'
+                        : 'text-slate-600'
+                        }`}
                     >
                       <span>{period}</span>
                       {selectedPeriod === period && <Check className="w-3.5 h-3.5 text-cyan-600" />}

@@ -7,13 +7,14 @@ export async function getOverviewStats(req, res) {
   try {
     const { period = 'Last 30 Days' } = req.query || {};
 
-    let days = 30;
-    if (period === 'Last 24 Hours') days = 1;
-    if (period === 'Last 7 Days') days = 7;
-    if (period === 'Last 90 Days') days = 90;
+    let timeInterval = "INTERVAL '30 days'";
+    if (period === 'Last 1 Hour') timeInterval = "INTERVAL '1 hour'";
+    else if (period === 'Last 24 Hours') timeInterval = "INTERVAL '24 hours'";
+    else if (period === 'Last 7 Days') timeInterval = "INTERVAL '7 days'";
+    else if (period === 'Last 90 Days') timeInterval = "INTERVAL '90 days'";
 
     // Filter by period if needed, or get overall
-    const timeFilter = `created_at >= NOW() - INTERVAL '${days} days'`;
+    const timeFilter = `created_at >= NOW() - ${timeInterval}`;
 
     // 1. Overview counts
     const countsRes = await query(`
@@ -111,30 +112,36 @@ export async function getOverviewStats(req, res) {
       SELECT * FROM issues ORDER BY created_at DESC LIMIT 50
     `);
 
-    const reports = reportsRes.rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      location: row.location_name || row.city,
-      category: categoryLabels[row.category] || row.category,
-      categoryRaw: row.category,
-      priority: row.severity.charAt(0).toUpperCase() + row.severity.slice(1),
-      status: row.status === 'in_progress' ? 'In Progress' : row.status.charAt(0).toUpperCase() + row.status.slice(1),
-      reportedOn: new Date(row.reported_at || row.created_at).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-      department: row.department || 'Public Works Department (PWD)',
-      details: row.description || '',
-      assignedCrew: row.assigned_crew || null,
-      aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : 95.0,
-      referenceNumber: row.reference_number,
-      supportCount: row.support_count,
-      latitude: row.latitude ? parseFloat(row.latitude) : null,
-      longitude: row.longitude ? parseFloat(row.longitude) : null,
-      lat: row.latitude ? parseFloat(row.latitude) : null,
-      lng: row.longitude ? parseFloat(row.longitude) : null,
-    }));
+    const reports = reportsRes.rows.map((row) => {
+      const city = (!row.city || row.city === 'All Cities') ? 'Pune' : row.city;
+      return {
+        id: row.id,
+        title: row.title,
+        location: row.location_name || city,
+        locationName: row.location_name,
+        city,
+        createdAt: row.created_at,
+        category: categoryLabels[row.category] || row.category,
+        categoryRaw: row.category,
+        priority: row.severity.charAt(0).toUpperCase() + row.severity.slice(1),
+        status: row.status === 'in_progress' ? 'In Progress' : row.status.charAt(0).toUpperCase() + row.status.slice(1),
+        reportedOn: new Date(row.reported_at || row.created_at).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }),
+        department: row.department || 'Public Works Department (PWD)',
+        details: row.description || '',
+        assignedCrew: row.assigned_crew || null,
+        aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : 95.0,
+        referenceNumber: row.reference_number,
+        supportCount: row.support_count,
+        latitude: row.latitude ? parseFloat(row.latitude) : null,
+        longitude: row.longitude ? parseFloat(row.longitude) : null,
+        lat: row.latitude ? parseFloat(row.latitude) : null,
+        lng: row.longitude ? parseFloat(row.longitude) : null,
+      };
+    });
 
     return res.json({
       success: true,

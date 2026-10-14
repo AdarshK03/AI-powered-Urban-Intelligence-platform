@@ -26,7 +26,6 @@ export default function App() {
             {/* Public Citizen Portal Routes */}
             <Route element={<CitizenLayout />}>
               <Route path="/" element={<OnboardingPanel />} />
-              <Route path="/onboarding" element={<Navigate to="/" replace />} />
               <Route path="/login" element={<LoginPanel />} />
               <Route path="/signup" element={<SignUpPanel />} />
             </Route>

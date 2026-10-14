@@ -15,19 +15,41 @@ export default function CitizenHome() {
   const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
- 
-  const trending = useMemo(
-    () => [...filterIssues(issues, { city, query })].sort((a, b) => b.supportCount - a.supportCount),
-    [issues, city, query],
-  );
+  const userCity = user?.city || 'Pune';
+
+  const trending = useMemo(() => {
+    const filtered = filterIssues(issues, { city, query });
+    return [...filtered].sort((a, b) => {
+      // Prioritize user's registered home city issues first
+      const aIsUserCity = a.city && a.city.toLowerCase() === userCity.toLowerCase();
+      const bIsUserCity = b.city && b.city.toLowerCase() === userCity.toLowerCase();
+      if (aIsUserCity && !bIsUserCity) return -1;
+      if (!aIsUserCity && bIsUserCity) return 1;
+      // Then by popularity / votes
+      return b.supportCount - a.supportCount;
+    });
+  }, [issues, city, query, userCity]);
+
   const shown = showAll || query ? trending : trending.slice(0, 4);
- 
+
   return (
     <div className="pb-28 lg:pb-10">
       <AppHeader query={query} onQuery={setQuery} placeholder="Search for issues, locations..." />
- 
+
       <div className="mx-4 mb-3 flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-900">Hello, {user?.name?.split(' ')[0] ?? 'there'}</p>
+        <div>
+          <p className="text-sm font-semibold text-slate-900">
+            Hello, {user?.name?.split(' ')[0] ?? 'there'}
+            <span className="ml-1.5 text-xs font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+              📍 {userCity}
+            </span>
+          </p>
+          {city !== 'All Cities' && city.toLowerCase() !== userCity.toLowerCase() && (
+            <p className="text-[11px] text-amber-700 font-medium mt-0.5">
+              Viewing {city} issues. (Voting is restricted to your home city: {userCity})
+            </p>
+          )}
+        </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700 ring-1 ring-teal-200">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           Live DB Connected

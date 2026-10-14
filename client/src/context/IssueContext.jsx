@@ -6,9 +6,16 @@ const IssueContext = createContext(null);
 export function IssueProvider({ children }) {
   const { user, token } = useAuth();
   const [issues, setIssues] = useState([]);
-  const [city, setCity] = useState('All Cities');
+  const [city, setCity] = useState(user?.city || 'Pune');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Sync city when user profile loads or changes
+  useEffect(() => {
+    if (user?.city) {
+      setCity(user.city);
+    }
+  }, [user?.city]);
 
   // Fetch issues from the live PostgreSQL backend
   const fetchIssues = useCallback(async () => {
@@ -47,9 +54,10 @@ export function IssueProvider({ children }) {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
+        const resolvedCity = data.city || (city !== 'All Cities' ? city : user?.city || 'Pune');
         const payload = {
           ...data,
-          city: data.city || city,
+          city: resolvedCity,
         };
 
         const res = await fetch('/api/issues', {
@@ -74,8 +82,39 @@ export function IssueProvider({ children }) {
     [city, token]
   );
 
+  const [notifications, setNotifications] = useState({
+    commentsOnMyReports: [],
+    recentIssues: [],
+    totalUnread: 0,
+  });
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/issues/feed/notifications', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifications({
+            commentsOnMyReports: data.commentsOnMyReports || [],
+            recentIssues: data.recentIssues || [],
+            totalUnread: data.totalUnread || 0,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications, issues]);
+
   const supportIssue = useCallback(
-    async (id) => {
+    async (id, voteType = 'up') => {
       try {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -83,7 +122,7 @@ export function IssueProvider({ children }) {
         const res = await fetch(`/api/issues/${id}/support`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ userId: user?.id }),
+          body: JSON.stringify({ userId: user?.id, voteType }),
         });
 
         const json = await res.json();
@@ -93,18 +132,21 @@ export function IssueProvider({ children }) {
               i.id === id
                 ? {
                     ...i,
-                    hasSupported: json.supported,
+                    hasSupported: json.hasSupported,
+                    userVote: json.userVote,
                     supportCount: json.supportCount,
                   }
                 : i
             )
           );
-          return json.supported;
+          return json;
+        } else {
+          throw new Error(json.message || 'Failed to submit vote.');
         }
       } catch (err) {
-        console.error('Error toggling support:', err);
+        console.error('Error voting on issue:', err);
+        throw err;
       }
-      return false;
     },
     [token, user?.id]
   );
@@ -113,6 +155,14 @@ export function IssueProvider({ children }) {
     (id) => {
       const target = issues.find((i) => i.id === id);
       return target ? !!target.hasSupported : false;
+    },
+    [issues]
+  );
+
+  const getUserVote = useCallback(
+    (id) => {
+      const target = issues.find((i) => i.id === id);
+      return target?.userVote || (target?.hasSupported ? 'up' : null);
     },
     [issues]
   );
@@ -144,13 +194,41 @@ export function IssueProvider({ children }) {
                 : i
             )
           );
+          fetchNotifications();
           return json.comment;
         }
       } catch (err) {
         console.error('Error posting comment:', err);
       }
     },
-    [token, user?.name]
+    [token, user?.name, fetchNotifications]
+  );
+
+  const deleteIssue = useCallback(
+    async (id) => {
+      try {
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/issues/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers,
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || 'Failed to delete issue report.');
+        }
+
+        setIssues((prev) => prev.filter((i) => i.id !== id && i.referenceNumber !== id));
+        fetchNotifications();
+        return true;
+      } catch (err) {
+        console.error('Error deleting issue report:', err);
+        throw err;
+      }
+    },
+    [token, fetchNotifications]
   );
 
   const value = useMemo(
@@ -165,9 +243,28 @@ export function IssueProvider({ children }) {
       addIssue,
       supportIssue,
       hasSupported,
+      getUserVote,
       addComment,
+      deleteIssue,
+      notifications,
+      refreshNotifications: fetchNotifications,
     }),
-    [issues, city, isLoading, error, fetchIssues, getIssue, addIssue, supportIssue, hasSupported, addComment]
+    [
+      issues,
+      city,
+      isLoading,
+      error,
+      fetchIssues,
+      getIssue,
+      addIssue,
+      supportIssue,
+      hasSupported,
+      getUserVote,
+      addComment,
+      deleteIssue,
+      notifications,
+      fetchNotifications,
+    ]
   );
 
   return <IssueContext.Provider value={value}>{children}</IssueContext.Provider>;
