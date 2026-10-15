@@ -205,6 +205,7 @@ export default function AdminDashboard({ onExit } = {}) {
   const [crews, setCrews] = useState(INITIAL_CREWS)
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS)
+  const [crewRequests, setCrewRequests] = useState([])
   const [settings, setSettings] = useState({
     aiConfidenceThreshold: 85,
     autoDispatchHighPriority: true,
@@ -309,10 +310,11 @@ export default function AdminDashboard({ onExit } = {}) {
   const fetchAdminMetadata = useCallback(async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {}
-      const [crewsRes, deptsRes, notifsRes] = await Promise.all([
+      const [crewsRes, deptsRes, notifsRes, reqsRes] = await Promise.all([
         fetch('/api/admin/crews', { headers }),
         fetch('/api/admin/departments', { headers }),
         fetch('/api/admin/notifications', { headers }),
+        fetch('/api/admin/crew-requests', { headers }),
       ])
       if (crewsRes.ok) {
         const cJson = await crewsRes.json()
@@ -326,10 +328,36 @@ export default function AdminDashboard({ onExit } = {}) {
         const nJson = await notifsRes.json()
         if (nJson.success && Array.isArray(nJson.notifications)) setNotifications(nJson.notifications)
       }
+      if (reqsRes && reqsRes.ok) {
+        const rJson = await reqsRes.json()
+        if (rJson.success && Array.isArray(rJson.requests)) setCrewRequests(rJson.requests)
+      }
     } catch (err) {
       console.error('Failed to load admin metadata from database:', err)
     }
   }, [token])
+
+  const handleRespondCrewRequest = async (requestId, action, adminNotes) => {
+    try {
+      const res = await fetch(`/api/admin/crew-requests/${requestId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action, adminNotes }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to respond to crew request.')
+      }
+      showToast(data.message, action === 'approve' ? 'success' : 'info')
+      fetchAdminMetadata()
+      fetchAdminOverview(selectedPeriod)
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
 
   useEffect(() => {
     fetchAdminOverview(selectedPeriod)
@@ -578,14 +606,30 @@ export default function AdminDashboard({ onExit } = {}) {
     } catch (e) { }
   }
 
-  const handleDeleteNotification = (id) => {
+  const handleDeleteNotification = async (id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id))
-    showToast('Notification dismissed', 'info')
+    try {
+      await fetch(`/api/admin/notifications/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      showToast('Notification deleted permanently', 'info')
+    } catch (e) {
+      console.error('Failed to delete notification:', e)
+    }
   }
 
-  const handleClearAllNotifications = () => {
+  const handleClearAllNotifications = async () => {
     setNotifications([])
-    showToast('Cleared all notifications', 'info')
+    try {
+      await fetch('/api/admin/notifications', {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      showToast('Cleared all notifications permanently', 'info')
+    } catch (e) {
+      console.error('Failed to clear notifications:', e)
+    }
   }
 
   // Navigation helpers from subtabs
@@ -817,6 +861,8 @@ export default function AdminDashboard({ onExit } = {}) {
             <AssignmentsTab
               crews={crews}
               issues={currentData.reports}
+              crewRequests={crewRequests}
+              onRespondCrewRequest={handleRespondCrewRequest}
               onUpdateCrewStatus={handleUpdateCrewStatus}
               onAssignCrewToIssue={handleAssignCrewToIssue}
               onOpenReportModal={setSelectedReportForView}

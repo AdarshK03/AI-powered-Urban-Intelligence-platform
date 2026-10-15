@@ -583,11 +583,11 @@ export async function getMyTaskRequests(req, res) {
   try {
     const user = req.user;
     const requestsRes = await query(
-      `SELECT r.id, r.status, r.notes, r.created_at,
+      `SELECT r.id, r.status, r.notes, r.retry_count, r.admin_notes, r.created_at,
               i.id AS issue_id, i.title, i.reference_number, i.category, i.severity, i.status AS issue_status, i.city, i.location_name
        FROM crew_task_requests r
        JOIN issues i ON r.issue_id = i.id
-       WHERE r.leader_id = $1
+       WHERE r.leader_id = $1 AND r.status != 'approved'
        ORDER BY r.created_at DESC`,
       [user.id]
     );
@@ -604,6 +604,8 @@ export async function getMyTaskRequests(req, res) {
       locationName: row.location_name,
       status: row.status,
       notes: row.notes,
+      retryCount: row.retry_count || 0,
+      adminNotes: row.admin_notes || '',
       createdAt: row.created_at,
     }));
 
@@ -617,3 +619,98 @@ export async function getMyTaskRequests(req, res) {
     return res.status(500).json({ success: false, message: 'Failed to fetch task requests.' });
   }
 }
+
+/**
+ * POST /api/crew/my-requests/:id/resend
+ * Resend a rejected task request back to admin (Allowed only once - retry_count === 0 -> 1)
+ */
+export async function resendTaskRequest(req, res) {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { notes } = req.body || {};
+
+    const reqCheck = await query('SELECT * FROM crew_task_requests WHERE id = $1 AND leader_id = $2', [id, user.id]);
+    if (reqCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task request not found or not owned by you.' });
+    }
+
+    const currentReq = reqCheck.rows[0];
+
+    if (currentReq.status !== 'rejected') {
+      return res.status(400).json({ success: false, message: 'Only declined requests can be resubmitted.' });
+    }
+
+    if ((currentReq.retry_count || 0) >= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already used your final retry chance for this request.',
+      });
+    }
+
+    const updatedNotes = notes && notes.trim() ? notes.trim() : (currentReq.notes || '');
+
+    await query(
+      `UPDATE crew_task_requests
+       SET status = 'pending',
+           retry_count = COALESCE(retry_count, 0) + 1,
+           notes = $1,
+           created_at = NOW()
+       WHERE id = $2`,
+      [updatedNotes, id]
+    );
+
+    // Notify admin about final resubmission
+    const issueRes = await query('SELECT * FROM issues WHERE id = $1', [currentReq.issue_id]);
+    const crewRes = await query('SELECT * FROM crews WHERE id = $1', [currentReq.crew_id]);
+    const issue = issueRes.rows[0];
+    const crew = crewRes.rows[0];
+
+    await query(
+      `INSERT INTO notifications (title, message, type, issue_id)
+       VALUES ($1, $2, 'info', $3)`,
+      [
+        `Crew Re-Submitted Request: ${issue?.title || 'Defect'} (Final Chance)`,
+        `Crew "${crew?.name || 'Field Crew'}" resubmitted request for defect "${issue?.title || ''}" (${issue?.reference_number || ''}). Updated notes: ${updatedNotes}`,
+        currentReq.issue_id,
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Request resubmitted successfully to municipal administration (Final Chance used).',
+    });
+  } catch (err) {
+    console.error('Error in resendTaskRequest:', err);
+    return res.status(500).json({ success: false, message: 'Failed to resubmit task request.' });
+  }
+}
+
+/**
+ * DELETE /api/crew/my-requests/:id
+ * Remove request completely from leader's tab
+ */
+export async function deleteTaskRequest(req, res) {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+
+    const deleteRes = await query(
+      'DELETE FROM crew_task_requests WHERE id = $1 AND leader_id = $2 RETURNING *',
+      [id, user.id]
+    );
+
+    if (deleteRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task request not found or not owned by you.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Task request removed completely.',
+    });
+  } catch (err) {
+    console.error('Error in deleteTaskRequest:', err);
+    return res.status(500).json({ success: false, message: 'Failed to remove task request.' });
+  }
+}
+

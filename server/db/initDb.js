@@ -110,6 +110,8 @@ export async function initDb() {
       leader_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       status VARCHAR(50) DEFAULT 'pending',
       notes TEXT,
+      retry_count INTEGER DEFAULT 0,
+      admin_notes TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(issue_id, crew_id)
     );
@@ -123,6 +125,15 @@ export async function initDb() {
       issue_id VARCHAR(100),
       recipient_id VARCHAR(100),
       recipient_role VARCHAR(50),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS password_reset_otps (
+      id SERIAL PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      otp VARCHAR(10) NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
@@ -153,6 +164,8 @@ export async function initDb() {
     await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS assignment_status VARCHAR(50) DEFAULT 'pending'");
     await query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_id VARCHAR(100)");
     await query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_role VARCHAR(50)");
+    await query("ALTER TABLE crew_task_requests ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0");
+    await query("ALTER TABLE crew_task_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT");
 
     // Seed default crews if empty
     const crewsCheck = await query('SELECT COUNT(*) FROM crews');

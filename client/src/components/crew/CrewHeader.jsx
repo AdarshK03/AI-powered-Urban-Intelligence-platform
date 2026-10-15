@@ -69,18 +69,17 @@ export default function CrewHeader({
               onClick={() => onToggleStatus(isAvailable ? 'Busy' : 'Available')}
               disabled={isTogglingStatus}
               title={`Switch working status to ${isAvailable ? 'Busy' : 'Active'}`}
-              className={`cursor-pointer px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs flex items-center gap-1.5 ${
-                isAvailable
+              className={`cursor-pointer px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs flex items-center gap-1.5 ${isAvailable
                   ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600'
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
-              } disabled:opacity-50`}
+                } disabled:opacity-50`}
             >
               <span>{isAvailable ? 'Set as Busy' : 'Set as Active'}</span>
             </button>
           </div>
 
           {/* Notifications Dropdown Container */}
-          <div className="relative" ref={dropdownRef}>
+          {/* <div className="relative" ref={dropdownRef}>
             <button
               type="button"
               onClick={() => setNotifOpen((prev) => !prev)}
@@ -102,7 +101,7 @@ export default function CrewHeader({
               onClose={() => setNotifOpen(false)}
               onSelectNotification={onSelectTaskNotification}
             />
-          </div>
+          </div> */}
 
           {/* Logout Button */}
           <button

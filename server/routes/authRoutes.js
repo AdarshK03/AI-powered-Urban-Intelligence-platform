@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { login, register, getProfile, updateProfile, logout } from '../controllers/authController.js';
+import {
+  login,
+  register,
+  getProfile,
+  updateProfile,
+  logout,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
+} from '../controllers/authController.js';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
 import { getAllUsers } from '../data/users.js';
 
@@ -9,6 +18,11 @@ const router = Router();
 router.post('/login', login);
 router.post('/register', register);
 router.post('/signup', register); // Alias for signup
+
+// Citizen Gmail password recovery via OTP
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-otp', verifyOtp);
+router.post('/reset-password', resetPassword);
 
 // Protected auth endpoints
 router.get('/me', authenticateToken, getProfile);

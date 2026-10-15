@@ -288,7 +288,9 @@ export async function assignCrew(req, res) {
  */
 export async function getNotifications(req, res) {
   try {
-    const resNotifs = await query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50');
+    const resNotifs = await query(
+      "SELECT * FROM notifications WHERE recipient_role IS NULL OR recipient_role = 'admin' ORDER BY created_at DESC LIMIT 50"
+    );
     const notifications = resNotifs.rows.map((n) => ({
       id: n.id,
       title: n.title,
@@ -300,6 +302,7 @@ export async function getNotifications(req, res) {
     }));
     return res.json({ success: true, count: notifications.length, notifications });
   } catch (err) {
+    console.error('Error in getNotifications:', err);
     return res.status(500).json({ success: false, message: 'Could not fetch notifications.' });
   }
 }
@@ -316,9 +319,167 @@ export async function markNotificationRead(req, res) {
 
 export async function markAllNotificationsRead(req, res) {
   try {
-    await query('UPDATE notifications SET unread = false');
+    await query("UPDATE notifications SET unread = false WHERE recipient_role IS NULL OR recipient_role = 'admin'");
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Could not mark all notifications as read.' });
   }
 }
+
+export async function deleteNotification(req, res) {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM notifications WHERE id = $1', [id]);
+    return res.json({ success: true, message: 'Notification deleted permanently.' });
+  } catch (err) {
+    console.error('Error in deleteNotification:', err);
+    return res.status(500).json({ success: false, message: 'Could not delete notification.' });
+  }
+}
+
+export async function clearAllNotifications(req, res) {
+  try {
+    await query("DELETE FROM notifications WHERE recipient_role IS NULL OR recipient_role = 'admin'");
+    return res.json({ success: true, message: 'All admin notifications deleted permanently.' });
+  } catch (err) {
+    console.error('Error in clearAllNotifications:', err);
+    return res.status(500).json({ success: false, message: 'Could not clear notifications.' });
+  }
+}
+
+/**
+ * Manage Crew Assignment Requests (Admin Review)
+ */
+export async function getCrewTaskRequests(req, res) {
+  try {
+    const requestsRes = await query(`
+      SELECT 
+        r.id,
+        r.issue_id,
+        r.crew_id,
+        r.leader_id,
+        r.status,
+        r.notes,
+        r.retry_count,
+        r.admin_notes,
+        r.created_at,
+        c.name AS crew_name,
+        c.leader AS crew_leader_name,
+        c.specialty AS crew_specialty,
+        c.status AS crew_status,
+        i.title AS issue_title,
+        i.reference_number,
+        i.category AS issue_category,
+        i.severity AS issue_severity,
+        i.city AS issue_city,
+        i.location_name AS issue_location_name,
+        i.status AS issue_status
+      FROM crew_task_requests r
+      JOIN crews c ON r.crew_id = c.id
+      JOIN issues i ON r.issue_id = i.id
+      ORDER BY r.created_at DESC
+    `);
+    return res.json({ success: true, requests: requestsRes.rows });
+  } catch (err) {
+    console.error('Error in getCrewTaskRequests:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch crew task requests.' });
+  }
+}
+
+export async function respondToCrewTaskRequest(req, res) {
+  try {
+    const { id } = req.params;
+    const { action, adminNotes } = req.body || {};
+
+    const reqCheck = await query('SELECT * FROM crew_task_requests WHERE id = $1', [id]);
+    if (reqCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task request not found.' });
+    }
+    const taskReq = reqCheck.rows[0];
+
+    const crewCheck = await query('SELECT * FROM crews WHERE id = $1', [taskReq.crew_id]);
+    const issueCheck = await query('SELECT * FROM issues WHERE id = $1', [taskReq.issue_id]);
+    const crew = crewCheck.rows[0];
+    const issue = issueCheck.rows[0];
+
+    if (action === 'approve') {
+      // 1. Mark request as approved
+      await query(
+        "UPDATE crew_task_requests SET status = 'approved', admin_notes = $1 WHERE id = $2",
+        [adminNotes || 'Request approved by municipal administrator.', id]
+      );
+
+      // 2. Assign issue to crew and set in_progress
+      const timeline = Array.isArray(issue?.timeline) ? issue.timeline : [];
+      timeline.push({
+        status: 'assigned',
+        label: `Assigned to ${crew?.name || 'Field Crew'} upon leader request approval.`,
+        at: new Date().toISOString(),
+      });
+
+      await query(
+        `UPDATE issues SET
+           assigned_crew = $1,
+           assignment_status = 'accepted',
+           status = 'in_progress',
+           timeline = $2,
+           updated_at = NOW()
+         WHERE id = $3`,
+        [crew?.name || 'Field Crew', JSON.stringify(timeline), taskReq.issue_id]
+      );
+
+      // 3. Mark crew status to Busy
+      await query(
+        "UPDATE crews SET assigned_issue_id = $1, status = 'Busy' WHERE id = $2",
+        [taskReq.issue_id, taskReq.crew_id]
+      );
+
+      // 4. Notify crew leader (concise title for the crew panel)
+      await query(
+        `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+         VALUES ($1, $2, 'task_assignment', $3, $4, 'crew')`,
+        [
+          issue?.title || 'Assignment Request Approved',
+          `Your assignment request for defect ${issue?.reference_number || ''} was approved by Municipal Admin. Work order is now In Progress.`,
+          taskReq.issue_id,
+          taskReq.leader_id,
+        ]
+      );
+
+      return res.json({
+        success: true,
+        message: `Task request approved. Issue assigned to ${crew?.name} and marked In Progress.`,
+      });
+    } else if (action === 'reject') {
+      // 1. Mark request as rejected with admin notes
+      const feedbackNotes = adminNotes && adminNotes.trim() ? adminNotes.trim() : 'Declined by municipal administration.';
+      await query(
+        "UPDATE crew_task_requests SET status = 'rejected', admin_notes = $1 WHERE id = $2",
+        [feedbackNotes, id]
+      );
+
+      // 2. Notify crew leader
+      await query(
+        `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+         VALUES ($1, $2, 'task_rejected', $3, $4, 'crew')`,
+        [
+          `Request Declined: ${issue?.title || 'Defect Request'}`,
+          `Admin note: ${feedbackNotes}. You may re-submit with revised details (one final chance) or remove the request.`,
+          taskReq.issue_id,
+          taskReq.leader_id,
+        ]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Task request declined. Crew leader has been notified.',
+      });
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid action. Must be "approve" or "reject".' });
+    }
+  } catch (err) {
+    console.error('Error in respondToCrewTaskRequest:', err);
+    return res.status(500).json({ success: false, message: 'Failed to respond to task request.' });
+  }
+}
+

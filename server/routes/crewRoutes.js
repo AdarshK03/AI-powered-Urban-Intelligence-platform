@@ -10,6 +10,8 @@ import {
   respondToTask,
   requestTaskAssignment,
   getMyTaskRequests,
+  resendTaskRequest,
+  deleteTaskRequest,
 } from '../controllers/crewController.js';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
 
@@ -37,5 +39,7 @@ router.post('/tasks/:id/respond', respondToTask);
 // Task requests: request assignment on unassigned map defect
 router.post('/request-task', requestTaskAssignment);
 router.get('/my-requests', getMyTaskRequests);
+router.post('/my-requests/:id/resend', resendTaskRequest);
+router.delete('/my-requests/:id', deleteTaskRequest);
 
 export default router;
