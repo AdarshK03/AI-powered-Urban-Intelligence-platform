@@ -9,6 +9,7 @@ import LoginPanel from './pages/LoginPanel';
 import SignUpPanel from './pages/SignUpPanel';
 import LoginScreen from './pages/LoginScreen';
 import AdminDashboard from './pages/AdminDashboard';
+import CrewDashboard from './pages/CrewDashboard';
 import CitizenHome from './pages/CitizenHome';
 import ReportIssue from './pages/ReportIssue';
 import IssueMap from './pages/IssueMap';
@@ -59,7 +60,15 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
+            {/* Protected Field Crew Leader Operations Portal */}
+            <Route
+              path="/crew"
+              element={
+                <ProtectedRoute requiredRole="crew" redirectTo="/login?portal=crew">
+                  <CrewDashboard />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/" replace />} />

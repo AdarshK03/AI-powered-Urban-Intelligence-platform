@@ -161,8 +161,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
 
       setTimeout(() => {
         if (result.user.role === 'crew') {
-          // Do not create a new page for crews UI yet; redirect to portal login with notification
-          navigate('/login?portal=crew');
+          navigate('/crew');
         } else {
           navigate('/citizen');
         }

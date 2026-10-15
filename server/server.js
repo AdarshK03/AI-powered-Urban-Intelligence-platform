@@ -4,6 +4,7 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import issueRoutes from './routes/issueRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import crewRoutes from './routes/crewRoutes.js';
 import { initDb } from './db/initDb.js';
 
 import path from 'path';
@@ -73,6 +74,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/issues', issueRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/crew', crewRoutes);
 
 // 404 Handler
 app.use((req, res) => {

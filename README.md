@@ -72,15 +72,16 @@ The platform features a complete **Node.js / Express** authentication flow conne
 - **Password Security**: Passwords hashed with `bcryptjs`.
 - **JWT Tokens**: Secure JSON Web Tokens issued on login and registration (`Bearer <token>`).
 - **Session & Credentials Caching**: Active JWT token, user object, and last-used credentials stored in `localStorage` (`uip_token`, `uip_user`, `uip_credentials`).
-- **Protected Routes**: Access to `/admin` is guarded by role-based authorization checking (`role === 'admin'`).
-- **Proxy Configuration**: Frontend Vite dev server proxies `/api` calls to `http://localhost:5000`.
+- **Protected Routes**: Access to `/admin` is guarded by role-based authorization checking (`role === 'admin'`), and `/crew` is guarded for Field Crew Leaders (`role === 'crew'`).
+- **Proxy Configuration**: Frontend Vite dev server proxies `/api` calls to `http://localhost:5001`.
 
 ### Pre-configured Test Accounts
 
 | Role | Email | Password | Access Level |
 | :--- | :--- | :--- | :--- |
 | **Municipal Administrator** | `admin@urban-intelligence.gov.in` | `admin123` | Municipal Admin Console (`/admin`) |
-| **Citizen** | `citizen@urban-intelligence.in` | `citizen123` | Citizen Portal |
+| **Field Crew Leader** | `crew@urban-intelligence.gov.in` | `crew123` | Crew Leader Operations (`/crew`) |
+| **Citizen** | `citizen@urban-intelligence.in` | `citizen123` | Citizen Portal (`/citizen`) |
 
 ---
 

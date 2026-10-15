@@ -80,9 +80,7 @@ export default function LoginPanel({
         if (result.user.role === 'admin') {
           navigate('/admin');
         } else if (result.user.role === 'crew') {
-          // Requirement 9: Do not create a new page for crews UI yet.
-          // Staying on this page will show the authenticated Crew Leader session card.
-          setSuccessMessage(`Authenticated as Crew Leader: ${result.user.name}`);
+          navigate('/crew');
         } else {
           // Citizen portal
           navigate('/citizen');
@@ -172,10 +170,11 @@ export default function LoginPanel({
             {user.role === 'crew' && (
               <button
                 type="button"
-                onClick={() => navigate('/citizen/map')}
-                className="w-full h-11 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer"
+                onClick={() => navigate('/crew')}
+                className="w-full h-11 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer flex items-center justify-center gap-2"
               >
-                View Public Road Incidents Map →
+                <Wrench className="w-4 h-4" />
+                <span>Go to Crew Leader Operations Portal →</span>
               </button>
             )}
 

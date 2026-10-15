@@ -238,14 +238,47 @@ export async function assignCrew(req, res) {
 
     if (issueId) {
       const crewName = updated.rows[0]?.name;
+      const crewLeaderId = updated.rows[0]?.leader_id;
+
+      const issueRes = await query('SELECT title, reference_number, timeline FROM issues WHERE id = $1', [issueId]);
+      const issueTitle = issueRes.rows[0]?.title || 'Road defect';
+      const timeline = typeof issueRes.rows[0]?.timeline === 'string'
+        ? JSON.parse(issueRes.rows[0].timeline)
+        : issueRes.rows[0]?.timeline || [];
+
+      timeline.push({
+        status: 'assigned',
+        label: `Work order dispatched to ${crewName}. Awaiting crew leader acceptance.`,
+        at: new Date().toISOString(),
+      });
+
       await query(
-        `UPDATE issues SET assigned_crew = $1, status = 'in_progress', updated_at = NOW() WHERE id = $2`,
-        [crewName, issueId]
+        `UPDATE issues SET
+           assigned_crew = $1,
+           assignment_status = 'pending',
+           status = 'in_progress',
+           timeline = $2,
+           updated_at = NOW()
+         WHERE id = $3`,
+        [crewName, JSON.stringify(timeline), issueId]
+      );
+
+      // Create notification with just the title for the crew
+      await query(
+        `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+         VALUES ($1, $2, 'task_assignment', $3, $4, 'crew')`,
+        [
+          issueTitle,
+          `Municipal Admin dispatched task to your crew.`,
+          issueId,
+          crewLeaderId || null,
+        ]
       );
     }
 
     return res.json({ success: true, crew: updated.rows[0] });
   } catch (err) {
+    console.error('Error in assignCrew:', err);
     return res.status(500).json({ success: false, message: 'Could not assign crew.' });
   }
 }

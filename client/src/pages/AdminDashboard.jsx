@@ -767,46 +767,6 @@ export default function AdminDashboard({ onExit } = {}) {
               </p>
             </div>
           </div>
-
-          {/* Right action control: Clean Timeframe Dropdown */}
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button
-              onClick={() => setNewIssueModalOpen(true)}
-              className="bg-[#0c6b82] hover:bg-[#0a5c70] text-white rounded-xl px-3.5 py-1.5 text-xs sm:text-sm font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden xs:inline">Report Issue</span>
-            </button>
-
-            <div className="relative">
-              <button
-                onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-                className="bg-white border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 shadow-xs flex items-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <Calendar className="w-4 h-4 text-slate-500" />
-                <span>{selectedPeriod}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              {periodDropdownOpen && (
-                <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-30">
-                  {TIME_PERIODS.map((period) => (
-                    <button
-                      key={period}
-                      onClick={() => handlePeriodChange(period)}
-                      className={`w-full text-left px-3.5 py-2 text-xs sm:text-sm flex items-center justify-between hover:bg-slate-50 cursor-pointer ${selectedPeriod === period
-                        ? 'text-cyan-800 font-semibold bg-cyan-50/60'
-                        : 'text-slate-600'
-                        }`}
-                    >
-                      <span>{period}</span>
-                      {selectedPeriod === period && <Check className="w-3.5 h-3.5 text-cyan-600" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </header>
 
         {/* Dashboard Content Container */}
