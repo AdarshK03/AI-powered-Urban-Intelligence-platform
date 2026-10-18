@@ -25,3 +25,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python virtual environment and cache
+ml-service/.venv/
+**/__pycache__/
+
+# Environment secrets
+.env
+**/.env
+
+# Uploaded test images
+server/uploads/

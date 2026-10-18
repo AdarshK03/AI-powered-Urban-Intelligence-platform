@@ -1,3 +1,6 @@
+import { predictIssueImage } from "../services/aiModelService.js";
+import { createImageHashes } from '../utils/imageHash.js';
+import { assessSeverity } from '../utils/severityAssessment.js';
 import { query } from '../config/db.js';
 import fs from 'fs';
 import path from 'path';
@@ -9,24 +12,34 @@ const uploadsDir = path.join(__dirname, '..', 'uploads');
 
 function processUploadedPhotos(photosList, issueId) {
   if (!Array.isArray(photosList)) return [];
+
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
   return photosList.map((photo, idx) => {
-    const rawUrl = typeof photo === 'string' ? photo : (photo?.url || photo?.dataUrl || '');
+    const rawUrl =
+      typeof photo === 'string'
+        ? photo
+        : photo?.url || photo?.dataUrl || '';
+
     const photoName = photo?.name || `photo_${idx + 1}.jpg`;
 
     if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
       try {
-        const matches = rawUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+        const matches = rawUrl.match(
+          /^data:image\/([a-zA-Z0-9.+-]+);base64,(.+)$/
+        );
+
         if (matches) {
           const ext = matches[1].replace('jpeg', 'jpg');
           const base64Data = matches[2];
           const buffer = Buffer.from(base64Data, 'base64');
           const fileName = `${issueId}_img_${idx}_${Date.now()}.${ext}`;
           const filePath = path.join(uploadsDir, fileName);
+
           fs.writeFileSync(filePath, buffer);
+
           return {
             url: `/uploads/${fileName}`,
             name: photoName,
@@ -46,6 +59,7 @@ function processUploadedPhotos(photosList, issueId) {
 
 function formatIssue(row, comments = [], userVote = null) {
   const isUpvoted = userVote === 'up' || userVote === true;
+
   return {
     id: row.id,
     referenceNumber: row.reference_number,
@@ -58,17 +72,31 @@ function formatIssue(row, comments = [], userVote = null) {
     locationName: row.location_name || '',
     latitude: row.latitude ? parseFloat(row.latitude) : null,
     longitude: row.longitude ? parseFloat(row.longitude) : null,
-    mapPos: typeof row.map_pos === 'string' ? JSON.parse(row.map_pos) : row.map_pos || null,
-    photos: typeof row.photos === 'string' ? JSON.parse(row.photos) : row.photos || [],
+    mapPos:
+      typeof row.map_pos === 'string'
+        ? JSON.parse(row.map_pos)
+        : row.map_pos || null,
+    photos:
+      typeof row.photos === 'string'
+        ? JSON.parse(row.photos)
+        : row.photos || [],
     supportCount: parseInt(row.support_count, 10) || 0,
     similarCount: parseInt(row.similar_count, 10) || 0,
     reporterId: row.reporter_id || null,
     reporterName: row.reporter_name || null,
     department: row.department || null,
     assignedCrew: row.assigned_crew || null,
-    aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : null,
-    timeline: typeof row.timeline === 'string' ? JSON.parse(row.timeline) : row.timeline || [],
-    beforeAfter: typeof row.before_after === 'string' ? JSON.parse(row.before_after) : row.before_after || null,
+    aiConfidence: row.ai_confidence
+      ? parseFloat(row.ai_confidence)
+      : null,
+    timeline:
+      typeof row.timeline === 'string'
+        ? JSON.parse(row.timeline)
+        : row.timeline || [],
+    beforeAfter:
+      typeof row.before_after === 'string'
+        ? JSON.parse(row.before_after)
+        : row.before_after || null,
     isDemo: !!row.is_demo,
     createdByUser: !!row.created_by_user,
     reportedAt: (row.reported_at || row.created_at).toISOString(),
@@ -80,7 +108,12 @@ function formatIssue(row, comments = [], userVote = null) {
       at: new Date(c.created_at).toISOString(),
     })),
     hasSupported: isUpvoted,
-    userVote: typeof userVote === 'string' ? userVote : isUpvoted ? 'up' : null,
+    userVote:
+      typeof userVote === 'string'
+        ? userVote
+        : isUpvoted
+          ? 'up'
+          : null,
   };
 }
 
@@ -89,7 +122,14 @@ function formatIssue(row, comments = [], userVote = null) {
  */
 export async function getIssues(req, res) {
   try {
-    const { city, category, severity, status, query: searchQ, reporterId } = req.query || {};
+    const {
+      city,
+      category,
+      severity,
+      status,
+      query: searchQ,
+      reporterId,
+    } = req.query || {};
 
     let sql = 'SELECT * FROM issues WHERE 1=1';
     const params = [];
@@ -127,7 +167,12 @@ export async function getIssues(req, res) {
     }
 
     if (searchQ && searchQ.trim()) {
-      sql += ` AND (LOWER(title) LIKE $${idx} OR LOWER(description) LIKE $${idx} OR LOWER(location_name) LIKE $${idx})`;
+      sql += ` AND (
+        LOWER(title) LIKE $${idx}
+        OR LOWER(description) LIKE $${idx}
+        OR LOWER(location_name) LIKE $${idx}
+      )`;
+
       params.push(`%${searchQ.trim().toLowerCase()}%`);
       idx++;
     }
@@ -136,25 +181,39 @@ export async function getIssues(req, res) {
 
     const issuesRes = await query(sql, params);
 
-    // Fetch all comments for these issues
-    const commentsRes = await query('SELECT * FROM issue_comments ORDER BY created_at ASC');
+    const commentsRes = await query(
+      'SELECT * FROM issue_comments ORDER BY created_at ASC'
+    );
+
     const commentsByIssue = {};
+
     for (const c of commentsRes.rows) {
-      if (!commentsByIssue[c.issue_id]) commentsByIssue[c.issue_id] = [];
+      if (!commentsByIssue[c.issue_id]) {
+        commentsByIssue[c.issue_id] = [];
+      }
+
       commentsByIssue[c.issue_id].push(c);
     }
 
-    // Check user votes if logged in
     const userVotes = {};
+
     if (req.user) {
-      const supRes = await query('SELECT issue_id, vote_type FROM issue_supports WHERE user_id = $1', [req.user.id]);
+      const supRes = await query(
+        'SELECT issue_id, vote_type FROM issue_supports WHERE user_id = $1',
+        [req.user.id]
+      );
+
       for (const r of supRes.rows) {
         userVotes[r.issue_id] = r.vote_type || 'up';
       }
     }
 
     const formatted = issuesRes.rows.map((row) =>
-      formatIssue(row, commentsByIssue[row.id] || [], userVotes[row.id] || null)
+      formatIssue(
+        row,
+        commentsByIssue[row.id] || [],
+        userVotes[row.id] || null
+      )
     );
 
     return res.json({
@@ -164,7 +223,11 @@ export async function getIssues(req, res) {
     });
   } catch (err) {
     console.error('Error in getIssues:', err);
-    return res.status(500).json({ success: false, message: 'Failed to retrieve issues.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve issues.',
+    });
   }
 }
 
@@ -174,10 +237,17 @@ export async function getIssues(req, res) {
 export async function getIssueById(req, res) {
   try {
     const { id } = req.params;
-    const issueRes = await query('SELECT * FROM issues WHERE id = $1 LIMIT 1', [id]);
+
+    const issueRes = await query(
+      'SELECT * FROM issues WHERE id = $1 LIMIT 1',
+      [id]
+    );
 
     if (!issueRes.rows.length) {
-      return res.status(404).json({ success: false, message: 'Issue not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found.',
+      });
     }
 
     const commentsRes = await query(
@@ -186,11 +256,13 @@ export async function getIssueById(req, res) {
     );
 
     let userVote = null;
+
     if (req.user) {
       const supRes = await query(
         'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
         [id, req.user.id]
       );
+
       if (supRes.rows.length > 0) {
         userVote = supRes.rows[0].vote_type || 'up';
       }
@@ -202,12 +274,17 @@ export async function getIssueById(req, res) {
     });
   } catch (err) {
     console.error('Error in getIssueById:', err);
-    return res.status(500).json({ success: false, message: 'Failed to retrieve issue details.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve issue details.',
+    });
   }
 }
 
 /**
  * Create a new civic issue report
+ * Includes severity assessment and exact duplicate-photo detection.
  */
 export async function createIssue(req, res) {
   try {
@@ -224,115 +301,281 @@ export async function createIssue(req, res) {
       photos = [],
     } = req.body || {};
 
+    // Authentication
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please sign in to report an issue.',
+      });
+    }
+
+    // Validate input
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Issue title is required.',
+      });
+    }
+
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required.',
+      });
+    }
+
+    if (!Array.isArray(photos)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Photos must be provided as an array.',
+      });
+    }
+
+    // Assess severity
+    const severityAssessment = assessSeverity({
+      category,
+      title,
+      description,
+      citizenSeverity: severity,
+    });
+
+    const finalSeverity = severityAssessment.severity;
+
+    // Resolve city
     let resolvedCity = (city || '').trim();
-    if (!resolvedCity || resolvedCity === 'All Cities' || resolvedCity.toLowerCase() === 'all') {
+
+    if (
+      !resolvedCity ||
+      resolvedCity === 'All Cities' ||
+      resolvedCity.toLowerCase() === 'all'
+    ) {
       if (locationName && /pune/i.test(locationName)) {
         resolvedCity = 'Pune';
-      } else if (req.user?.city) {
+      } else if (req.user.city) {
         resolvedCity = req.user.city;
       } else {
         resolvedCity = 'Pune';
       }
     }
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Issue title is required.' });
-    }
-    if (!category) {
-      return res.status(400).json({ success: false, message: 'Category is required.' });
-    }
-
-    // Generate unique reference number: UI-2026-XXXX
-    const countRes = await query('SELECT COUNT(*) FROM issues');
-    const seq = parseInt(countRes.rows[0].count, 10) + 1;
-    const referenceNumber = `UI-${new Date().getFullYear()}-${String(seq).padStart(4, '0')}`;
-    const id = `iss_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const nowIso = new Date().toISOString();
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required. Please sign in to report an issue.'
-      });
-    }
-
     const reporterId = req.user.id;
     const reporterName = req.user.name || 'Citizen User';
+
+    // Hash photos before saving them or creating a report.
+    const imageHashes = [];
+
+    for (const photo of photos) {
+      const imageData =
+        typeof photo === 'string'
+          ? photo
+          : photo?.dataUrl || photo?.url || '';
+
+      // Only hash Base64-uploaded images.
+      if (!imageData.startsWith('data:image/')) {
+        continue;
+      }
+
+      const hashes = await createImageHashes(imageData);
+
+      if (hashes) {
+        imageHashes.push(hashes);
+      }
+    }
+
+    // Reject a photo that is already registered.
+    // The existing report is never modified by this check.
+    for (const { exactHash } of imageHashes) {
+      const duplicateRes = await query(
+        `SELECT
+           i.id,
+           i.reference_number,
+           i.title,
+           i.status
+         FROM issue_photo_hashes h
+         JOIN issues i ON i.id = h.issue_id
+         WHERE h.image_hash = $1
+         LIMIT 1`,
+        [exactHash]
+      );
+
+      if (duplicateRes.rows.length > 0) {
+        const original = duplicateRes.rows[0];
+
+        return res.status(409).json({
+          success: false,
+          duplicate: true,
+          message:
+            'This photo has already been submitted. Please open the existing report instead of creating a duplicate.',
+          originalReport: {
+            id: original.id,
+            referenceNumber: original.reference_number,
+            title: original.title,
+            status: original.status,
+          },
+        });
+      }
+    }
+
+    
+  // Run YOLO prediction after duplicate checking.
+  let aiPrediction = null;
+
+  const firstImageData = photos
+    .map((photo) =>
+      typeof photo === "string"
+        ? photo
+        : photo?.dataUrl || photo?.url || ""
+    )
+    .find(
+      (image) =>
+        typeof image === "string" &&
+        image.startsWith("data:image/")
+    );
+
+  if (firstImageData) {
+    try {
+      aiPrediction = await predictIssueImage(firstImageData);
+
+      console.log("YOLO prediction:", {
+        predictedClass: aiPrediction.predictedClass,
+        confidencePercent: aiPrediction.confidencePercent,
+      });
+    } catch (aiError) {
+      // AI failure should not prevent a citizen from reporting an issue.
+      console.error("YOLO prediction failed:", aiError.message);
+    }
+  }
+
+
+    // Generate report reference and ID.
+    const countRes = await query('SELECT COUNT(*) FROM issues');
+    const seq = parseInt(countRes.rows[0].count, 10) + 1;
+
+    const referenceNumber =
+      `UI-${new Date().getFullYear()}-${String(seq).padStart(4, '0')}`;
+
+    const id =
+      `iss_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const nowIso = new Date().toISOString();
 
     const timeline = [
       {
         status: 'reported',
-        label: req.user ? `Reported by ${req.user.name}` : 'Reported by citizen',
+        label: `Reported by ${reporterName}`,
         at: nowIso,
       },
     ];
 
-    // Compute mock AI confidence score between 91.0 and 99.2
-    const aiConfidence = (90 + Math.random() * 9).toFixed(1);
+    // Save uploaded photos only after duplicate checking.
+    const savedPhotos = processUploadedPhotos(photos, id);
 
     const insertSql = `
       INSERT INTO issues (
-        id, reference_number, title, description, category, severity, status,
-        city, location_name, latitude, longitude, map_pos, photos,
-        support_count, similar_count, reporter_id, reporter_name, ai_confidence,
-        timeline, is_demo, created_by_user, created_at, updated_at
-      ) VALUES (
+        id,
+        reference_number,
+        title,
+        description,
+        category,
+        severity,
+        status,
+        city,
+        location_name,
+        latitude,
+        longitude,
+        map_pos,
+        photos,
+        support_count,
+        similar_count,
+        reporter_id,
+        reporter_name,
+        ai_confidence,
+        timeline,
+        is_demo,
+        created_by_user,
+        created_at,
+        updated_at
+      )
+      VALUES (
         $1, $2, $3, $4, $5, $6, 'reported',
         $7, $8, $9, $10, $11, $12,
         0, 0, $13, $14, $15,
         $16, false, true, NOW(), NOW()
-      ) RETURNING *
+      )
+      RETURNING *
     `;
 
-    // Safely save user-uploaded photos to server storage and persist in database
-    const savedPhotos = processUploadedPhotos(photos, id);
+    
+const insertRes = await query(insertSql, [
+  id,
+  referenceNumber,
+  title.trim(),
+  description ? description.trim() : '',
+  category,
+  finalSeverity,
+  resolvedCity,
+  locationName ? locationName.trim() : resolvedCity,
+  latitude ?? null,
+  longitude ?? null,
+  mapPos ? JSON.stringify(mapPos) : null,
+  JSON.stringify(savedPhotos),
+  reporterId,
+  reporterName,
+  aiPrediction?.confidencePercent ?? null,
+  JSON.stringify(timeline),
+]);
 
-    const insertRes = await query(insertSql, [
-      id,
-      referenceNumber,
-      title.trim(),
-      description ? description.trim() : '',
-      category,
-      severity,
-      resolvedCity,
-      locationName ? locationName.trim() : resolvedCity,
-      latitude ?? null,
-      longitude ?? null,
-      mapPos ? JSON.stringify(mapPos) : null,
-      JSON.stringify(savedPhotos),
-      reporterId,
-      reporterName,
-      aiConfidence,
-      JSON.stringify(timeline),
-    ]);
 
-    // Create municipal notification for admins
+    // Register photo hashes against the newly created report.
+    for (const { exactHash } of imageHashes) {
+      await query(
+        `INSERT INTO issue_photo_hashes (issue_id, image_hash)
+         VALUES ($1, $2)
+         ON CONFLICT (image_hash) DO NOTHING`,
+        [id, exactHash]
+      );
+    }
+
+    // Notify administrators.
     await query(
       `INSERT INTO notifications (title, message, type, issue_id)
        VALUES ($1, $2, $3, $4)`,
       [
         `New Civic Report: ${title.trim()}`,
-        `Reported in ${resolvedCity} (${locationName || 'General zone'}) with ${severity.toUpperCase()} priority. Reference: ${referenceNumber}`,
-        severity === 'high' ? 'urgent' : 'info',
+        `Reported in ${resolvedCity} (${locationName || 'General zone'}) with ${finalSeverity.toUpperCase()} priority. Reference: ${referenceNumber}`,
+        finalSeverity === 'high' ? 'urgent' : 'info',
         id,
       ]
     );
 
     const formatted = formatIssue(insertRes.rows[0], [], false);
 
-    return res.status(201).json({
-      success: true,
-      message: 'Issue reported successfully.',
-      issue: formatted,
-    });
+return res.status(201).json({
+  success: true,
+  message: 'Issue reported successfully.',
+  issue: formatted,
+  aiPrediction: aiPrediction
+    ? {
+        predictedClass: aiPrediction.predictedClass,
+        confidence: aiPrediction.confidence,
+        confidencePercent: aiPrediction.confidencePercent,
+        needsReview: aiPrediction.needsReview,
+      }
+    : null,
+});
   } catch (err) {
     console.error('Error in createIssue:', err);
-    return res.status(500).json({ success: false, message: 'Failed to create issue report.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create issue report.',
+    });
   }
 }
 
 /**
  * Vote on issue (Upvote / Downvote)
- * Author cannot vote on their own report
+ * Author cannot vote on their own report.
  */
 export async function supportIssue(req, res) {
   try {
@@ -341,29 +584,41 @@ export async function supportIssue(req, res) {
     const userId = req.user ? req.user.id : req.body.userId;
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: 'Authentication required to vote.' });
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required to vote.',
+      });
     }
 
-    // 1. Check issue existence, ownership, and city restriction
-    const issueRes = await query('SELECT reporter_id, support_count, city FROM issues WHERE id = $1 LIMIT 1', [id]);
+    const issueRes = await query(
+      'SELECT reporter_id, support_count, city FROM issues WHERE id = $1 LIMIT 1',
+      [id]
+    );
+
     if (!issueRes.rows.length) {
-      return res.status(404).json({ success: false, message: 'Issue not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found.',
+      });
     }
 
     const issue = issueRes.rows[0];
 
-    // REQUIREMENT: Cannot vote on own reported issue
     if (issue.reporter_id && issue.reporter_id === userId) {
       return res.status(400).json({
         success: false,
-        message: 'You cannot vote on your own reported issue.'
+        message: 'You cannot vote on your own reported issue.',
       });
     }
 
-    // REQUIREMENT 3: Citizens can view issues in other cities, but cannot vote on issues outside their registered city
     let userCity = req.user?.city;
+
     if (!userCity) {
-      const uRes = await query('SELECT city FROM users WHERE id = $1 LIMIT 1', [userId]);
+      const uRes = await query(
+        'SELECT city FROM users WHERE id = $1 LIMIT 1',
+        [userId]
+      );
+
       userCity = uRes.rows[0]?.city || 'Pune';
     }
 
@@ -379,42 +634,60 @@ export async function supportIssue(req, res) {
       });
     }
 
-    // Ensure vote_type column exists
-    await query(`ALTER TABLE issue_supports ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'`).catch(() => {});
+    await query(
+      `ALTER TABLE issue_supports
+       ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'`
+    ).catch(() => {});
 
-    // Check existing vote
     const existing = await query(
       'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
       [id, userId]
     );
 
     let finalVote = null;
+
     if (existing.rows.length > 0) {
       const currentVote = existing.rows[0].vote_type || 'up';
+
       if (currentVote === voteType) {
-        // Toggling off the same vote
-        await query('DELETE FROM issue_supports WHERE issue_id = $1 AND user_id = $2', [id, userId]);
+        await query(
+          'DELETE FROM issue_supports WHERE issue_id = $1 AND user_id = $2',
+          [id, userId]
+        );
+
         finalVote = null;
       } else {
-        // Switching vote (e.g. from down to up or up to down)
-        await query('UPDATE issue_supports SET vote_type = $1, created_at = NOW() WHERE issue_id = $2 AND user_id = $3', [voteType, id, userId]);
+        await query(
+          `UPDATE issue_supports
+           SET vote_type = $1, created_at = NOW()
+           WHERE issue_id = $2 AND user_id = $3`,
+          [voteType, id, userId]
+        );
+
         finalVote = voteType;
       }
     } else {
-      // New vote
       await query(
-        'INSERT INTO issue_supports (issue_id, user_id, vote_type) VALUES ($1, $2, $3) ON CONFLICT (issue_id, user_id) DO UPDATE SET vote_type = EXCLUDED.vote_type',
+        `INSERT INTO issue_supports (issue_id, user_id, vote_type)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (issue_id, user_id)
+         DO UPDATE SET vote_type = EXCLUDED.vote_type`,
         [id, userId, voteType]
       );
+
       finalVote = voteType;
     }
 
-    // Recalculate support score (count of up votes minus down votes, min 0)
     const countRes = await query(
-      `SELECT 
-         COUNT(*) FILTER (WHERE vote_type = 'up' OR vote_type IS NULL) AS up_count,
-         COUNT(*) FILTER (WHERE vote_type = 'down') AS down_count
-       FROM issue_supports WHERE issue_id = $1`,
+      `SELECT
+         COUNT(*) FILTER (
+           WHERE vote_type = 'up' OR vote_type IS NULL
+         ) AS up_count,
+         COUNT(*) FILTER (
+           WHERE vote_type = 'down'
+         ) AS down_count
+       FROM issue_supports
+       WHERE issue_id = $1`,
       [id]
     );
 
@@ -422,7 +695,10 @@ export async function supportIssue(req, res) {
     const downCount = parseInt(countRes.rows[0].down_count, 10) || 0;
     const netScore = Math.max(0, upCount - downCount);
 
-    await query('UPDATE issues SET support_count = $1, updated_at = NOW() WHERE id = $2', [netScore, id]);
+    await query(
+      'UPDATE issues SET support_count = $1, updated_at = NOW() WHERE id = $2',
+      [netScore, id]
+    );
 
     return res.json({
       success: true,
@@ -434,7 +710,11 @@ export async function supportIssue(req, res) {
     });
   } catch (err) {
     console.error('Error in supportIssue:', err);
-    return res.status(500).json({ success: false, message: 'Failed to process vote.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process vote.',
+    });
   }
 }
 
@@ -447,15 +727,24 @@ export async function addComment(req, res) {
     const { text, author } = req.body || {};
 
     if (!text || !text.trim()) {
-      return res.status(400).json({ success: false, message: 'Comment text is required.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Comment text is required.',
+      });
     }
 
-    const commentId = `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const authorName = req.user ? req.user.name : author?.trim() || 'Citizen';
+    const commentId =
+      `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const authorName = req.user
+      ? req.user.name
+      : author?.trim() || 'Citizen';
+
     const userId = req.user ? req.user.id : null;
 
     await query(
-      `INSERT INTO issue_comments (id, issue_id, user_id, author_name, text)
+      `INSERT INTO issue_comments
+       (id, issue_id, user_id, author_name, text)
        VALUES ($1, $2, $3, $4, $5)`,
       [commentId, id, userId, authorName, text.trim()]
     );
@@ -482,7 +771,11 @@ export async function addComment(req, res) {
     });
   } catch (err) {
     console.error('Error in addComment:', err);
-    return res.status(500).json({ success: false, message: 'Failed to post comment.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to post comment.',
+    });
   }
 }
 
@@ -495,32 +788,48 @@ export async function updateIssueStatus(req, res) {
     const { status, label, department, assignedCrew } = req.body || {};
 
     if (!status) {
-      return res.status(400).json({ success: false, message: 'New status is required.' });
+      return res.status(400).json({
+        success: false,
+        message: 'New status is required.',
+      });
     }
 
-    const currentRes = await query('SELECT * FROM issues WHERE id = $1', [id]);
+    const currentRes = await query(
+      'SELECT * FROM issues WHERE id = $1',
+      [id]
+    );
+
     if (!currentRes.rows.length) {
-      return res.status(404).json({ success: false, message: 'Issue not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found.',
+      });
     }
 
     const current = currentRes.rows[0];
-    const timeline = typeof current.timeline === 'string' ? JSON.parse(current.timeline) : current.timeline || [];
+
+    const timeline =
+      typeof current.timeline === 'string'
+        ? JSON.parse(current.timeline)
+        : current.timeline || [];
 
     const statusLabels = {
       reported: 'Reported by citizen',
       verified: 'Verified by authority',
-      assigned: department ? `Assigned to ${department}` : 'Assigned to field division',
-      in_progress: assignedCrew ? `Work in progress by ${assignedCrew}` : 'Work in progress',
+      assigned: department
+        ? `Assigned to ${department}`
+        : 'Assigned to field division',
+      in_progress: assignedCrew
+        ? `Work in progress by ${assignedCrew}`
+        : 'Work in progress',
       resolved: 'Work completed and resolved',
     };
 
-    const newMilestone = {
+    timeline.push({
       status,
       label: label || statusLabels[status] || `Status updated to ${status}`,
       at: new Date().toISOString(),
-    };
-
-    timeline.push(newMilestone);
+    });
 
     const updateSql = `
       UPDATE issues SET
@@ -548,7 +857,11 @@ export async function updateIssueStatus(req, res) {
     });
   } catch (err) {
     console.error('Error in updateIssueStatus:', err);
-    return res.status(500).json({ success: false, message: 'Failed to update issue status.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update issue status.',
+    });
   }
 }
 
@@ -562,40 +875,58 @@ export async function deleteIssue(req, res) {
     const currentUserRole = req.user ? req.user.role : null;
 
     if (!currentUserId) {
-      return res.status(401).json({ success: false, message: 'Authentication required to remove a report.' });
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required to remove a report.',
+      });
     }
 
-    const issueRes = await query('SELECT id, reporter_id, photos FROM issues WHERE id = $1 LIMIT 1', [id]);
+    const issueRes = await query(
+      'SELECT id, reporter_id, photos FROM issues WHERE id = $1 LIMIT 1',
+      [id]
+    );
+
     if (!issueRes.rows.length) {
-      return res.status(404).json({ success: false, message: 'Issue report not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Issue report not found.',
+      });
     }
 
     const issue = issueRes.rows[0];
 
-    // Authorization: only the author or an admin can delete the report
-    if (issue.reporter_id !== currentUserId && currentUserRole !== 'admin') {
+    if (
+      issue.reporter_id !== currentUserId &&
+      currentUserRole !== 'admin'
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Forbidden: You can only remove reports that you posted.'
+        message: 'Forbidden: You can only remove reports that you posted.',
       });
     }
 
-    // Delete photos if stored on disk in uploads/
+    // Clean up uploaded photo files.
     try {
-      const photos = Array.isArray(issue.photos) ? issue.photos : JSON.parse(issue.photos || '[]');
+      const photos = Array.isArray(issue.photos)
+        ? issue.photos
+        : JSON.parse(issue.photos || '[]');
+
       for (const p of photos) {
         if (p.url && p.url.startsWith('/uploads/')) {
           const filePath = path.join(__dirname, '..', p.url);
+
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }
         }
       }
     } catch (cleanupErr) {
-      console.warn('Could not clean up uploaded photos on delete:', cleanupErr.message);
+      console.warn(
+        'Could not clean up uploaded photos on delete:',
+        cleanupErr.message
+      );
     }
 
-    // Delete related records and issue
     await query('DELETE FROM issue_comments WHERE issue_id = $1', [id]);
     await query('DELETE FROM issue_supports WHERE issue_id = $1', [id]);
     await query('DELETE FROM notifications WHERE issue_id = $1', [id]);
@@ -603,20 +934,21 @@ export async function deleteIssue(req, res) {
 
     return res.json({
       success: true,
-      message: 'Civic issue report has been permanently removed.'
+      message: 'Civic issue report has been permanently removed.',
     });
   } catch (err) {
     console.error('Error in deleteIssue:', err);
-    return res.status(500).json({ success: false, message: 'Failed to delete issue report.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete issue report.',
+    });
   }
 }
 
 /**
  * Get notifications feed for citizen portal:
- * Exclusively returns updates on the user's reported issues:
- * 1. Comments on user's reported issues
- * 2. Upvotes and Downvotes on user's reported issues
- * Generic new reports are removed (they live on the dashboard).
+ * Comments and votes on the user's own reports.
  */
 export async function getNotifications(req, res) {
   try {
@@ -625,9 +957,8 @@ export async function getNotifications(req, res) {
     let votesOnMyReports = [];
 
     if (currentUserId) {
-      // 1. Comments made on issues where reporter_id is current user, but comment author is someone else
       const commentsRes = await query(
-        `SELECT 
+        `SELECT
            c.id AS comment_id,
            c.text AS comment_text,
            c.author_name AS comment_author,
@@ -638,7 +969,8 @@ export async function getNotifications(req, res) {
            i.category AS issue_category
          FROM issue_comments c
          JOIN issues i ON c.issue_id = i.id
-         WHERE i.reporter_id = $1 AND (c.user_id != $1 OR c.user_id IS NULL)
+         WHERE i.reporter_id = $1
+           AND (c.user_id != $1 OR c.user_id IS NULL)
          ORDER BY c.created_at DESC
          LIMIT 20`,
         [currentUserId]
@@ -653,13 +985,16 @@ export async function getNotifications(req, res) {
         issueTitle: row.issue_title,
         referenceNumber: row.issue_reference,
         author: row.comment_author,
-        message: `${row.comment_author} commented on your report: "${row.comment_text.length > 55 ? row.comment_text.substring(0, 55) + '...' : row.comment_text}"`,
+        message: `${row.comment_author} commented on your report: "${
+          row.comment_text.length > 55
+            ? row.comment_text.substring(0, 55) + '...'
+            : row.comment_text
+        }"`,
         createdAt: row.comment_created_at,
       }));
 
-      // 2. Upvotes & Downvotes on issues where reporter_id is current user, by someone else
       const votesRes = await query(
-        `SELECT 
+        `SELECT
            s.id AS support_id,
            s.vote_type,
            s.created_at AS vote_created_at,
@@ -671,7 +1006,8 @@ export async function getNotifications(req, res) {
          FROM issue_supports s
          JOIN issues i ON s.issue_id = i.id
          LEFT JOIN users u ON s.user_id = u.id
-         WHERE i.reporter_id = $1 AND s.user_id != $1
+         WHERE i.reporter_id = $1
+           AND s.user_id != $1
          ORDER BY s.created_at DESC
          LIMIT 20`,
         [currentUserId]
@@ -680,6 +1016,7 @@ export async function getNotifications(req, res) {
       votesOnMyReports = votesRes.rows.map((row) => {
         const isUp = (row.vote_type || 'up') === 'up';
         const voterName = row.voter_name || 'A citizen';
+
         return {
           id: `notif_v_${row.support_id}`,
           type: 'vote',
@@ -690,16 +1027,18 @@ export async function getNotifications(req, res) {
           issueTitle: row.issue_title,
           referenceNumber: row.issue_reference,
           author: voterName,
-          message: `${voterName} ${isUp ? 'upvoted (supported)' : 'downvoted'} your report: "${row.issue_title}"`,
+          message: `${voterName} ${
+            isUp ? 'upvoted (supported)' : 'downvoted'
+          } your report: "${row.issue_title}"`,
           createdAt: row.vote_created_at,
         };
       });
     }
 
-    // Combined notifications on user's reports sorted chronologically
-    const allNotifications = [...commentsOnMyReports, ...votesOnMyReports].sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-    );
+    const allNotifications = [
+      ...commentsOnMyReports,
+      ...votesOnMyReports,
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return res.json({
       success: true,
@@ -710,6 +1049,10 @@ export async function getNotifications(req, res) {
     });
   } catch (err) {
     console.error('Error in getNotifications:', err);
-    return res.status(500).json({ success: false, message: 'Could not fetch notifications.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Could not fetch notifications.',
+    });
   }
 }
