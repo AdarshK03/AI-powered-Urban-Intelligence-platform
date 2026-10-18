@@ -279,7 +279,7 @@ export default function AdminDashboard({ onExit } = {}) {
           department: row.department || 'Public Works Department (PWD)',
           details: row.description || row.details || '',
           assignedCrew: row.assigned_crew || null,
-          aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : 95.0,
+          aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : null,
         }))
 
         setCurrentData({

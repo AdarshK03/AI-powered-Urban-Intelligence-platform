@@ -49,9 +49,9 @@ async def predict(file: UploadFile = File(...)):
     try:
         import io
 
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        image.verify()
-    except (UnidentifiedImageError, OSError):
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            img.verify()
+    except (UnidentifiedImageError, OSError, SyntaxError):
         raise HTTPException(
             status_code=400,
             detail="The uploaded file is not a valid image.",

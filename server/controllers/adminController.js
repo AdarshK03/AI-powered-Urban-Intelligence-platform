@@ -133,7 +133,7 @@ export async function getOverviewStats(req, res) {
         department: row.department || 'Public Works Department (PWD)',
         details: row.description || '',
         assignedCrew: row.assigned_crew || null,
-        aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : 95.0,
+        aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : null,
         referenceNumber: row.reference_number,
         supportCount: row.support_count,
         latitude: row.latitude ? parseFloat(row.latitude) : null,

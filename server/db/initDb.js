@@ -69,6 +69,13 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS issue_photo_hashes (
+      id BIGSERIAL PRIMARY KEY,
+      issue_id VARCHAR(100) NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+      image_hash VARCHAR(255) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS departments (
       id VARCHAR(100) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -154,6 +161,15 @@ export async function initDb() {
     await query("DELETE FROM issues WHERE is_demo = true OR id LIKE 'iss-00%'");
 
     // Dynamic migrations
+    await query(`
+      CREATE TABLE IF NOT EXISTS issue_photo_hashes (
+        id BIGSERIAL PRIMARY KEY,
+        issue_id VARCHAR(100) NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        image_hash VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await query("CREATE INDEX IF NOT EXISTS idx_issue_photo_hashes_hash ON issue_photo_hashes(image_hash)");
     await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Pune'");
     await query("ALTER TABLE issue_supports ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'");
     await query("UPDATE issues SET city = 'Pune' WHERE city = 'All Cities' OR city IS NULL");

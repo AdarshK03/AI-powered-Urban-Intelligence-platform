@@ -121,9 +121,20 @@ cd ../client && npm install
 npm run server
 # or: cd server && npm run dev
 ```
-The server will start on `http://localhost:5000`.
+The server will start on `http://localhost:5001`.
 
-### 3. Start the Frontend Application (`client`)
+### 3. Start the AI Model Service (`ml-service`)
+In a new terminal:
+```bash
+cd ml-service
+python -m venv .venv
+# Windows: .venv\Scripts\activate | Unix: source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+```
+The AI inference service will start on `http://127.0.0.1:8000`.
+
+### 4. Start the Frontend Application (`client`)
 In a new terminal:
 ```bash
 npm run client

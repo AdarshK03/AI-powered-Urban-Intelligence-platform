@@ -6,7 +6,7 @@ export async function predictIssueImage(photo) {
   const image =
     typeof photo === "string"
       ? photo
-      : photo?.dataUrl || photo?.dataURL || photo?.preview;
+      : photo?.dataUrl || photo?.dataURL || photo?.url || photo?.preview;
 
   if (typeof image !== "string") {
     throw new Error("No image data was provided to the AI model.");

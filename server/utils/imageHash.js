@@ -29,22 +29,27 @@ export async function createImageHashes(image) {
     .digest("hex");
 
   // Normalize image format and dimensions for a second comparison.
-  const normalizedBuffer = await sharp(imageBuffer, {
-    limitInputPixels: 40000000,
-  })
-    .rotate()
-    .resize(256, 256, {
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
+  let normalizedHash = null;
+  try {
+    const normalizedBuffer = await sharp(imageBuffer, {
+      limitInputPixels: 40000000,
     })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
+      .rotate()
+      .resize(256, 256, {
+        fit: "contain",
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
 
-  const normalizedHash = crypto
-    .createHash("sha256")
-    .update(normalizedBuffer)
-    .digest("hex");
+    normalizedHash = crypto
+      .createHash("sha256")
+      .update(normalizedBuffer)
+      .digest("hex");
+  } catch (err) {
+    console.warn("Sharp image normalization skipped:", err.message);
+  }
 
   return {
     exactHash,

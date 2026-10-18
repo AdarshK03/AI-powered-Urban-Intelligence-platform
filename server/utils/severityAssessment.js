@@ -10,21 +10,45 @@ const CATEGORY_RULES = {
     high: ["deep", "large", "dangerous", "major", "accident"],
     medium: ["crack", "damaged", "broken"],
   },
+  road: {
+    high: ["deep", "large", "dangerous", "major", "accident", "cave-in", "collapse"],
+    medium: ["crack", "damaged", "broken", "uneven"],
+  },
   road_damage: {
-    high: ["deep", "large", "dangerous", "major", "accident"],
-    medium: ["crack", "damaged", "broken"],
+    high: ["deep", "large", "dangerous", "major", "accident", "cave-in", "collapse"],
+    medium: ["crack", "damaged", "broken", "uneven"],
+  },
+  water: {
+    high: ["flooded", "impassable", "deep water", "submerged"],
+    medium: ["waterlogged", "standing water", "overflow"],
   },
   waterlogging: {
     high: ["flooded", "impassable", "deep water", "submerged"],
-    medium: ["waterlogged", "standing water"],
+    medium: ["waterlogged", "standing water", "overflow"],
+  },
+  drain: {
+    high: ["open manhole", "uncovered manhole", "missing cover", "open drain", "hazardous"],
+    medium: ["damaged manhole", "broken grate", "clogged"],
   },
   open_manhole: {
-    high: ["open manhole", "uncovered manhole", "missing cover"],
-    medium: ["damaged manhole"],
+    high: ["open manhole", "uncovered manhole", "missing cover", "open drain", "hazardous"],
+    medium: ["damaged manhole", "broken grate", "clogged"],
+  },
+  light: {
+    high: ["live wire", "electric shock", "exposed wire", "sparking"],
+    medium: ["broken", "not working", "dark", "flickering"],
   },
   streetlight: {
-    high: ["live wire", "electric shock", "exposed wire"],
-    medium: ["broken", "not working", "dark"],
+    high: ["live wire", "electric shock", "exposed wire", "sparking"],
+    medium: ["broken", "not working", "dark", "flickering"],
+  },
+  signal: {
+    high: ["blackout", "traffic jam", "accident risk", "all signals off"],
+    medium: ["stuck", "timer broken", "not changing", "blinking yellow"],
+  },
+  footpath: {
+    high: ["collapsed", "major ditch", "trip hazard", "sinkhole"],
+    medium: ["broken paver", "cracked", "blocked"],
   },
 };
 
