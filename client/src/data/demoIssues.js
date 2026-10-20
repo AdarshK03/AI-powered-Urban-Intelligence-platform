@@ -8,6 +8,7 @@ export const CATEGORIES = [
   { id: 'signal', label: 'Traffic Signal', bg: 'bg-emerald-100', fg: 'text-emerald-700' },
   { id: 'footpath', label: 'Footpath', bg: 'bg-orange-100', fg: 'text-orange-600' },
   { id: 'water', label: 'Water Logging', bg: 'bg-sky-100', fg: 'text-sky-600' },
+  { id: 'under_review', label: 'Under Review', bg: 'bg-amber-100', fg: 'text-amber-800' },
   { id: 'other', label: 'Others', bg: 'bg-purple-100', fg: 'text-purple-600' },
 ];
 
@@ -27,7 +28,12 @@ export const STATUSES = {
 
 export const RESOLVED_PIN = '#0F766E';
 
-export const categoryById = (id) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+export const categoryById = (id) => {
+  if (id === 'under_review') {
+    return { id: 'under_review', label: 'Under Review', bg: 'bg-amber-100', fg: 'text-amber-800' };
+  }
+  return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+};
 
 /** Marker colour + glyph. Resolved issues use their own colour and a tick. */
 export const pinStyle = (issue) =>

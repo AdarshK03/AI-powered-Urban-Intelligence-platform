@@ -558,6 +558,56 @@ export default function AdminDashboard({ onExit } = {}) {
     handleAssignCrew(issueId, targetCrew.name)
   }
 
+  // Admin classifies unclassified/under review report
+  const handleClassifyIssue = async (reportId, newCategory) => {
+    try {
+      const res = await fetch(`/api/admin/issues/${reportId}/classify`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ category: newCategory }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Failed to classify issue', 'error')
+        return
+      }
+
+      showToast(`Defect classified as ${data.categoryLabel}`, 'success')
+
+      setCurrentData((prev) => ({
+        ...prev,
+        reports: prev.reports.map((r) =>
+          r.id === reportId
+            ? {
+                ...r,
+                category: data.categoryLabel,
+                categoryRaw: data.category,
+                aiNeedsReview: false,
+              }
+            : r
+        ),
+      }))
+
+      setSelectedReportForView((prev) =>
+        prev && prev.id === reportId
+          ? {
+              ...prev,
+              category: data.categoryLabel,
+              categoryRaw: data.category,
+              aiNeedsReview: false,
+            }
+          : prev
+      )
+    } catch (err) {
+      console.error('Error classifying issue:', err)
+      showToast('Error updating defect classification', 'error')
+    }
+  }
+
   // Update crew status (e.g. Job complete or recall)
   const handleUpdateCrewStatus = (crewId, newStatus) => {
     setCrews((prev) =>
@@ -928,6 +978,7 @@ export default function AdminDashboard({ onExit } = {}) {
           onUpdateStatus={updateReportStatus}
           onDeleteIssue={handleDeleteIssue}
           onAssignCrew={handleAssignCrew}
+          onClassifyIssue={handleClassifyIssue}
           crews={crews}
         />
       )}

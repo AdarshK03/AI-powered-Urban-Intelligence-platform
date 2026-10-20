@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useIssues } from '../context/IssueContext';
 import { useAuth } from '../context/AuthContext';
 import { useNav } from '../hooks/useCitizenNav';
@@ -42,13 +42,14 @@ function Stepper({ step, onGo }) {
 
 export default function ReportIssue() {
   const { addIssue } = useIssues();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { navigate, back } = useNav();
+  const fileInputRef = useRef(null);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     title: '',
     description: '',
-    category: 'pothole',
+    category: 'under_review',
     severity: null,
     city: user?.city || 'Pune',
     locationName: '',
@@ -60,8 +61,140 @@ export default function ReportIssue() {
   const [geo, setGeo] = useState({ status: 'idle', message: '' });
   const [created, setCreated] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState({
+    status: 'idle', // 'idle' | 'analyzing' | 'detected' | 'unclear' | 'duplicate'
+    message: '',
+    prediction: null,
+    duplicateReport: null,
+  });
+
+  // Instant duplicate alert modal state
+  const [duplicateModal, setDuplicateModal] = useState({
+    isOpen: false,
+    photoId: null,
+    report: null,
+  });
 
   const update = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  // Real-time photo inspection: duplicate checking and AI defect detection
+  const inspectPhotoFile = async (photoId, dataUrl) => {
+    setAiAnalysis((prev) => ({
+      ...prev,
+      status: prev.status === 'duplicate' ? 'duplicate' : 'analyzing',
+      message: 'Inspecting photo for duplicates & analyzing defect with AI...',
+    }));
+
+    try {
+      const res = await fetch('/api/issues/inspect-photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ photo: dataUrl }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setPhotos((list) => list.map((p) => p.id === photoId ? { ...p, isScanning: false } : p));
+        setAiAnalysis((prev) =>
+          prev.status === 'duplicate'
+            ? prev
+            : {
+                status: 'unclear',
+                message: 'Automatic classification unavailable. Municipal administration will review and classify this report.',
+                prediction: null,
+                duplicateReport: null,
+              }
+        );
+        update({ category: 'under_review' });
+        return;
+      }
+
+      if (data.duplicate) {
+        // AT THAT VERY INSTANT:
+        // 1. Mark photo as duplicate in list and stop scanning
+        setPhotos((list) =>
+          list.map((p) =>
+            p.id === photoId
+              ? { ...p, isDuplicate: true, isScanning: false, duplicateInfo: data.originalReport }
+              : p
+          )
+        );
+
+        // 2. Set duplicate state
+        setAiAnalysis({
+          status: 'duplicate',
+          message: data.message || 'This photo has already been reported.',
+          prediction: null,
+          duplicateReport: data.originalReport,
+        });
+
+        // 3. Immediately trigger instant Duplicate Alert Modal
+        setDuplicateModal({
+          isOpen: true,
+          photoId,
+          report: data.originalReport,
+        });
+
+        setErrors((prev) => ({
+          ...prev,
+          photos: 'Duplicate photo detected. Please remove it and upload a different photo.',
+        }));
+        return;
+      }
+
+      // Not a duplicate
+      setPhotos((list) =>
+        list.map((p) =>
+          p.id === photoId ? { ...p, isScanning: false, isDuplicate: false } : p
+        )
+      );
+
+      const pred = data.prediction;
+      if (pred && !pred.needsReview && pred.mappedCategory && pred.mappedCategory !== 'under_review') {
+        setAiAnalysis((prev) =>
+          prev.status === 'duplicate'
+            ? prev
+            : {
+                status: 'detected',
+                message: `AI Model identified defect: ${pred.categoryLabel} (${pred.confidencePercent}% confidence)`,
+                prediction: pred,
+                duplicateReport: null,
+              }
+        );
+        update({ category: pred.mappedCategory });
+      } else {
+        setAiAnalysis((prev) =>
+          prev.status === 'duplicate'
+            ? prev
+            : {
+                status: 'unclear',
+                message: 'The photo is not clear enough for automated classification. Report will be forwarded to municipal administration to decide the defect type.',
+                prediction: pred || null,
+                duplicateReport: null,
+              }
+        );
+        update({ category: 'under_review' });
+      }
+    } catch (err) {
+      console.warn('Real-time inspection error:', err);
+      setPhotos((list) => list.map((p) => p.id === photoId ? { ...p, isScanning: false } : p));
+      setAiAnalysis((prev) =>
+        prev.status === 'duplicate'
+          ? prev
+          : {
+              status: 'unclear',
+              message: 'Report will be submitted for municipal administration review and classification.',
+              prediction: null,
+              duplicateReport: null,
+            }
+      );
+      update({ category: 'under_review' });
+    }
+  };
 
   // ----- photos (read into persistent Data URLs so they can be saved safely in DB) -----
   const addPhotos = (e) => {
@@ -88,10 +221,17 @@ export default function ReportIssue() {
     valid.forEach((f) => {
       const reader = new FileReader();
       reader.onload = () => {
-        setPhotos((p) => [
-          ...p,
-          { id: `${Date.now()}-${Math.random()}`, name: f.name, url: reader.result },
-        ]);
+        const photoId = `${Date.now()}-${Math.random()}`;
+        const photoObj = {
+          id: photoId,
+          name: f.name,
+          url: reader.result,
+          isScanning: true,
+          isDuplicate: false,
+        };
+        setPhotos((p) => [...p, photoObj]);
+        // Trigger inspection immediately at that very instant
+        inspectPhotoFile(photoId, reader.result);
       };
       reader.readAsDataURL(f);
     });
@@ -100,7 +240,55 @@ export default function ReportIssue() {
   };
 
   const removePhoto = (id) => {
-    setPhotos((list) => list.filter((x) => x.id !== id));
+    setPhotos((list) => {
+      const filtered = list.filter((x) => x.id !== id);
+      const remainingDuplicates = filtered.filter((x) => x.isDuplicate);
+      if (filtered.length === 0) {
+        setAiAnalysis({ status: 'idle', message: '', prediction: null, duplicateReport: null });
+        update({ category: 'under_review' });
+        setDuplicateModal({ isOpen: false, photoId: null, report: null });
+        setErrors((prev) => {
+          const { photos: _p, ...rest } = prev;
+          return rest;
+        });
+      } else if (remainingDuplicates.length > 0) {
+        const dup = remainingDuplicates[0];
+        setAiAnalysis({
+          status: 'duplicate',
+          message: 'This photo has already been reported.',
+          prediction: null,
+          duplicateReport: dup.duplicateInfo,
+        });
+      } else {
+        setAiAnalysis((prev) =>
+          prev.status === 'duplicate'
+            ? { status: 'idle', message: '', prediction: null, duplicateReport: null }
+            : prev
+        );
+        setDuplicateModal({ isOpen: false, photoId: null, report: null });
+        setErrors((prev) => {
+          const { photos: _p, ...rest } = prev;
+          return rest;
+        });
+      }
+      return filtered;
+    });
+  };
+
+  const handleReplaceDuplicate = (photoId) => {
+    if (photoId) {
+      removePhoto(photoId);
+    } else {
+      setPhotos([]);
+    }
+    setDuplicateModal({ isOpen: false, photoId: null, report: null });
+    setErrors((prev) => {
+      const { photos: _p, ...rest } = prev;
+      return rest;
+    });
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 100);
   };
 
   // ----- real-time browser GPS location -----
@@ -145,7 +333,14 @@ export default function ReportIssue() {
   // ----- validation -----
   const validateDetails = () => {
     const e = {};
-    if (photos.length === 0) e.photos = 'Add at least one photo of the issue.';
+    if (photos.length === 0) {
+      e.photos = 'Add at least one photo of the issue.';
+    } else if (photos.some((p) => p.isDuplicate) || aiAnalysis.status === 'duplicate') {
+      e.photos = 'Duplicate photo detected. Please remove it and upload a different photo.';
+    } else if (photos.some((p) => p.isScanning)) {
+      e.photos = 'Please wait a moment while the photo is being verified.';
+    }
+
     const title = form.title.trim();
     if (title.length < 5) e.title = 'Enter a short title (at least 5 characters).';
     else if (title.length > 80) e.title = 'Title must be 80 characters or fewer.';
@@ -173,7 +368,7 @@ export default function ReportIssue() {
         const res = await addIssue({
           title: form.title.trim(),
           description: form.description.trim(),
-          category: form.category,
+          category: form.category || 'under_review',
           severity: form.severity ?? 'medium',
           city: form.city || user?.city || 'Pune',
           locationName: form.locationName.trim(),
@@ -181,6 +376,7 @@ export default function ReportIssue() {
           longitude: form.coords?.lng ?? null,
           mapPos: form.mapPos,
           photos: photos.map(({ url, name }) => ({ url, name })),
+          aiPrediction: aiAnalysis.prediction,
         });
         setCreated(res);
       } catch (err) {
@@ -256,8 +452,29 @@ export default function ReportIssue() {
           <h2 className="text-base font-bold text-slate-900">Upload Issue Photos</h2>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
             {photos.map((p, i) => (
-              <div key={p.id} className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 shadow-xs">
+              <div
+                key={p.id}
+                className={`relative aspect-square overflow-hidden rounded-xl border shadow-xs transition-all ${
+                  p.isDuplicate
+                    ? 'border-2 border-red-500 ring-2 ring-red-400'
+                    : 'border-slate-200'
+                }`}
+              >
                 <IssuePhoto photo={p} alt={`Selected photo ${i + 1}: ${p.name}`} className="h-full w-full" />
+
+                {p.isScanning && (
+                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs flex flex-col items-center justify-center text-white p-1">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent mb-1" />
+                    <span className="text-[10px] font-bold">Scanning...</span>
+                  </div>
+                )}
+
+                {p.isDuplicate && (
+                  <div className="absolute inset-x-0 bottom-0 bg-red-600/90 text-white text-[10px] font-bold uppercase tracking-wider py-1 text-center shadow-xs">
+                    Duplicate
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => removePhoto(p.id)}
@@ -280,6 +497,7 @@ export default function ReportIssue() {
                 <span className="text-[11px] text-slate-500">(max {MAX_PHOTOS} photos, up to {MAX_MB}MB each)</span>
                 <input
                   id="photo-input"
+                  ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   multiple
@@ -289,7 +507,67 @@ export default function ReportIssue() {
               </label>
             )}
           </div>
-          {errors.photos && <p role="alert" className={errorCls}>{errors.photos}</p>}
+
+          {/* Instant Scanning Status Indicator */}
+          {photos.some((p) => p.isScanning) && (
+            <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-teal-50 border border-teal-200 px-3 py-2 text-xs text-teal-800 animate-pulse">
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-teal-600 border-t-transparent shrink-0" />
+              <span>Verifying photo with civic duplicate registry and AI classification...</span>
+            </div>
+          )}
+
+          {/* Instant Duplicate Alert Banner right at the photo section */}
+          {(photos.some((p) => p.isDuplicate) || aiAnalysis.status === 'duplicate') && (
+            <div className="mt-3 rounded-xl border-2 border-red-500 bg-red-50 p-4 shadow-sm animate-in fade-in duration-200">
+              <div className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white font-bold text-sm">
+                  ✕
+                </span>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-block rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                      Duplicate Photo Detected
+                    </span>
+                    {aiAnalysis.duplicateReport?.referenceNumber && (
+                      <span className="text-xs font-mono font-bold text-red-950">
+                        Incident #{aiAnalysis.duplicateReport.referenceNumber}
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="mt-1 text-sm font-bold text-red-950">
+                    This issue has already been reported!
+                  </h4>
+                  <p className="mt-1 text-xs text-red-800 leading-relaxed">
+                    Our civic database verified that this exact photo was already submitted for{' '}
+                    <strong>"{aiAnalysis.duplicateReport?.title || 'Existing Report'}"</strong> ({aiAnalysis.duplicateReport?.status || 'Pending'}).
+                    Duplicate reports cannot be submitted to avoid dispatching duplicate maintenance crews.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {aiAnalysis.duplicateReport?.id && (
+                      <button
+                        type="button"
+                        onClick={() => navigate('issue', { id: aiAnalysis.duplicateReport.id })}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-800 transition cursor-pointer shadow-xs"
+                      >
+                        View Existing Incident #{aiAnalysis.duplicateReport.referenceNumber} →
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleReplaceDuplicate(duplicateModal.photoId || photos.find(p => p.isDuplicate)?.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition cursor-pointer shadow-2xs"
+                    >
+                      Upload Different Photo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {errors.photos && !photos.some((p) => p.isDuplicate) && (
+            <p role="alert" className={errorCls}>{errors.photos}</p>
+          )}
           <p className="mt-2 text-[11px] text-teal-700 font-medium">
             ✓ Photos are safely stored on the server and archived in the central civic database.
           </p>
@@ -327,25 +605,100 @@ export default function ReportIssue() {
               <p className="mt-1 text-right text-[11px] text-slate-400">{form.description.length}/500</p>
               {errors.description && <p role="alert" className={errorCls}>{errors.description}</p>}
             </div>
+            {/* Real-Time AI Defect Detection & Status Card (User does not decide defect) */}
             <div>
-              <label htmlFor="category" className={labelCls}>
-                Category
+              <label className={labelCls}>
+                Defect Classification <span className="font-normal text-slate-400">(Automated by AI)</span>
               </label>
-              <div className="relative">
-                <select
-                  id="category"
-                  value={form.category}
-                  onChange={(e) => update({ category: e.target.value })}
-                  className={`${field(false)} cursor-pointer appearance-none pr-10`}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </div>
+
+              {aiAnalysis.status === 'analyzing' && (
+                <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3.5 flex items-center gap-3 animate-pulse">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-600 border-t-transparent shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-teal-900">AI Model Analyzing Road Defect...</p>
+                    <p className="text-[11px] text-teal-700 mt-0.5">Checking duplicate database and predicting defect classification.</p>
+                  </div>
+                </div>
+              )}
+
+              {aiAnalysis.status === 'detected' && aiAnalysis.prediction && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-800 uppercase">
+                        ✓ AI Defect Identified
+                      </span>
+                      <h4 className="mt-1 text-base font-bold text-slate-900">
+                        {aiAnalysis.prediction.categoryLabel}
+                      </h4>
+                      <p className="mt-0.5 text-xs text-emerald-800 leading-relaxed">
+                        Classified with {aiAnalysis.prediction.confidencePercent}% confidence. Will be automatically assigned to the designated municipal division.
+                      </p>
+                    </div>
+                    <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-mono font-bold text-emerald-700 border border-emerald-200 shrink-0 shadow-xs">
+                      {aiAnalysis.prediction.confidencePercent}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {aiAnalysis.status === 'unclear' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 shadow-xs">
+                  <div className="flex items-start gap-2.5">
+                    <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold shrink-0 mt-0.5">
+                      !
+                    </span>
+                    <div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold tracking-wider text-amber-900 uppercase">
+                        Routed to Municipal Administrator
+                      </span>
+                      <h4 className="mt-1 text-sm font-bold text-slate-900">
+                        Defect Type: Under Review
+                      </h4>
+                      <p className="mt-0.5 text-xs text-amber-800 leading-relaxed">
+                        The uploaded photo is not distinct enough for instant AI classification. No action required from you—your report will be submitted normally and a municipal officer will review the image and classify the defect.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiAnalysis.status === 'duplicate' && (
+                <div className="rounded-xl border border-red-300 bg-red-50 p-4 shadow-xs">
+                  <div className="flex items-start gap-2.5">
+                    <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-200 text-red-900 text-xs font-bold shrink-0 mt-0.5">
+                      ✕
+                    </span>
+                    <div className="flex-1">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold tracking-wider text-red-900 uppercase">
+                        Duplicate Photo Detected
+                      </span>
+                      <h4 className="mt-1 text-sm font-bold text-red-950">
+                        This issue has already been reported
+                      </h4>
+                      <p className="mt-1 text-xs text-red-800 leading-relaxed">
+                        This exact photo is already logged in the civic database under reference{' '}
+                        <strong>{aiAnalysis.duplicateReport?.referenceNumber || aiAnalysis.duplicateReport?.title}</strong>.
+                      </p>
+                      {aiAnalysis.duplicateReport?.id && (
+                        <button
+                          type="button"
+                          onClick={() => navigate('issue', { id: aiAnalysis.duplicateReport.id })}
+                          className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-white px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 cursor-pointer transition shadow-2xs"
+                        >
+                          View Existing Incident #{aiAnalysis.duplicateReport.referenceNumber} →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {photos.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-500 leading-relaxed">
+                  💡 <strong>Automated Defect Detection:</strong> Add a photo above. The YOLO AI model will automatically analyze and classify the defect. If the image is unclear, municipal administration will classify it.
+                </div>
+              )}
             </div>
             <fieldset>
               <legend className={labelCls}>
@@ -582,12 +935,108 @@ export default function ReportIssue() {
         <button
           type="button"
           onClick={next}
-          disabled={isSubmitting}
-          className={`${btnPrimary} flex items-center justify-center gap-2`}
+          disabled={
+            isSubmitting ||
+            (step === 1 &&
+              (photos.some((p) => p.isDuplicate) ||
+                aiAnalysis.status === 'duplicate' ||
+                photos.some((p) => p.isScanning)))
+          }
+          className={`${btnPrimary} flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed`}
         >
-          {isSubmitting ? 'Submitting to database...' : step === 3 ? 'Submit Civic Issue Report' : 'Next'}
+          {isSubmitting
+            ? 'Submitting to database...'
+            : step === 1 && (photos.some((p) => p.isDuplicate) || aiAnalysis.status === 'duplicate')
+            ? 'Duplicate Photo (Remove to Proceed)'
+            : step === 1 && photos.some((p) => p.isScanning)
+            ? 'Verifying Photo...'
+            : step === 3
+            ? 'Submit Civic Issue Report'
+            : 'Next'}
         </button>
       </div>
+
+      {/* Instant Duplicate Alert Modal */}
+      {duplicateModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="duplicate-title"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-red-200 text-left"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateModal({ isOpen: false, photoId: null, report: null })}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+                aria-label="Close"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <h3 id="duplicate-title" className="mt-4 text-lg font-bold text-slate-900">
+              Duplicate Photo Detected
+            </h3>
+            <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+              This exact photo was already submitted for an existing civic report. To prevent duplicate crew dispatches, duplicate submissions cannot be accepted.
+            </p>
+
+            {duplicateModal.report && (
+              <div className="mt-3.5 rounded-xl border border-red-100 bg-red-50/70 p-3.5 space-y-1.5 text-xs text-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-red-900">
+                    Incident #{duplicateModal.report.referenceNumber}
+                  </span>
+                  <span className="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-bold text-red-900 uppercase">
+                    {duplicateModal.report.status || 'Active'}
+                  </span>
+                </div>
+                <p className="font-semibold text-slate-900 text-sm">
+                  {duplicateModal.report.title}
+                </p>
+                {duplicateModal.report.locationName && (
+                  <p className="text-[11px] text-slate-600">
+                    📍 {duplicateModal.report.locationName}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p className="mt-3 text-[11px] text-slate-500">
+              You do not need to fill out this report. You can view and track the existing incident, or upload a fresh photo of a different defect.
+            </p>
+
+            <div className="mt-5 flex flex-col sm:flex-row gap-2">
+              {duplicateModal.report?.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDuplicateModal({ isOpen: false, photoId: null, report: null });
+                    navigate('issue', { id: duplicateModal.report.id });
+                  }}
+                  className="flex-1 rounded-xl bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800 transition cursor-pointer text-center shadow-xs"
+                >
+                  View Existing Incident
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleReplaceDuplicate(duplicateModal.photoId)}
+                className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
+              >
+                Upload Different Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
