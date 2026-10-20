@@ -1,0 +1,64 @@
+{
+  "classes": [
+    "construction_zone",
+    "damaged_road",
+    "garbage",
+    "manhole",
+    "pothole",
+    "waterlogged_road"
+  ],
+  "best_validation_macro_f1": 0.919825179628115,
+  "test_loss": 0.2884372511735852,
+  "test_macro_f1": 0.8754903780269928,
+  "test_micro_f1": 0.8794788273615635,
+  "per_class_metrics": [
+    {
+      "class": "construction_zone",
+      "test_positives": 16,
+      "precision": 0.8421052631578947,
+      "recall": 1.0,
+      "f1": 0.9142857142857143
+    },
+    {
+      "class": "damaged_road",
+      "test_positives": 189,
+      "precision": 0.8655913978494624,
+      "recall": 0.8518518518518519,
+      "f1": 0.8586666666666667
+    },
+    {
+      "class": "garbage",
+      "test_positives": 22,
+      "precision": 0.9166666666666666,
+      "recall": 1.0,
+      "f1": 0.9565217391304348
+    },
+    {
+      "class": "manhole",
+      "test_positives": 105,
+      "precision": 0.7647058823529411,
+      "recall": 0.7428571428571429,
+      "f1": 0.7536231884057971
+    },
+    {
+      "class": "pothole",
+      "test_positives": 419,
+      "precision": 0.9489795918367347,
+      "recall": 0.8878281622911695,
+      "f1": 0.9173859432799013
+    },
+    {
+      "class": "waterlogged_road",
+      "test_positives": 27,
+      "precision": 0.7647058823529411,
+      "recall": 0.9629629629629629,
+      "f1": 0.8524590163934426
+    }
+  ],
+  "training_seconds": 742.4,
+  "limitations": [
+    "Open drain has no verified training class.",
+    "Irrelevant-image rejection has no verified negative examples.",
+    "Manhole does not mean open drain."
+  ]
+}
