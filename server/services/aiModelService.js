@@ -2,6 +2,52 @@
 const AI_MODEL_URL =
   process.env.AI_MODEL_URL || "http://127.0.0.1:8000";
 
+export function mapAiClassToCategory(predictedClass) {
+  if (!predictedClass || typeof predictedClass !== "string") {
+    return { category: "under_review", label: "Under Review" };
+  }
+  const raw = predictedClass.toLowerCase().trim();
+
+  // Explicit mapping for new multi-label classes
+  if (raw === "construction_zone" || raw.includes("construction")) {
+    return { category: "road", label: "Construction Zone" };
+  }
+  if (raw === "damaged_road" || raw.includes("damaged_road")) {
+    return { category: "road", label: "Broken Road" };
+  }
+  if (raw === "waterlogged_road" || raw.includes("waterlogged")) {
+    return { category: "water", label: "Water Logging" };
+  }
+  if (raw === "garbage" || raw.includes("garbage") || raw.includes("dump")) {
+    return { category: "other", label: "Garbage & Waste" };
+  }
+  if (raw === "manhole" || raw.includes("manhole")) {
+    return { category: "drain", label: "Open Drain / Manhole" };
+  }
+  if (raw === "pothole" || raw.includes("pothole")) {
+    return { category: "pothole", label: "Pothole" };
+  }
+
+  // Fallback keyword rules
+  if (raw.includes("crack") || raw.includes("road")) {
+    if (raw.includes("water")) {
+      return { category: "water", label: "Water Logging" };
+    }
+    return { category: "road", label: "Broken Road" };
+  }
+  if (raw.includes("drain")) {
+    return { category: "drain", label: "Open Drain" };
+  }
+  if (raw.includes("water")) {
+    return { category: "water", label: "Water Logging" };
+  }
+  if (raw.includes("light")) {
+    return { category: "light", label: "Street Light" };
+  }
+
+  return { category: "under_review", label: "Under Review" };
+}
+
 export async function predictIssueImage(photo) {
   const image =
     typeof photo === "string"
@@ -64,11 +110,15 @@ export async function predictIssueImage(photo) {
     throw new Error("The AI model returned an invalid prediction.");
   }
 
+  const mapping = mapAiClassToCategory(result.predicted_class);
+
   return {
     predictedClass: result.predicted_class,
+    mappedCategory: mapping.category,
+    categoryLabel: mapping.label,
     confidence: result.confidence,
     confidencePercent: result.confidence_percent,
-    needsReview: result.needs_review,
+    needsReview: !!result.needs_review,
   };
 }
 

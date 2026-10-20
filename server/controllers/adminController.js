@@ -49,6 +49,7 @@ export async function getOverviewStats(req, res) {
       water: '#fb923c',
       signal: '#10b981',
       other: '#c084fc',
+      under_review: '#eab308',
     };
 
     const categoryLabels = {
@@ -60,6 +61,7 @@ export async function getOverviewStats(req, res) {
       water: 'Water Logging',
       signal: 'Traffic Signal',
       other: 'Others',
+      under_review: 'Under Review',
     };
 
     const categories = catRes.rows.map((r) => {
@@ -134,6 +136,9 @@ export async function getOverviewStats(req, res) {
         details: row.description || '',
         assignedCrew: row.assigned_crew || null,
         aiConfidence: row.ai_confidence ? parseFloat(row.ai_confidence) : null,
+        aiNeedsReview: !!row.ai_needs_review,
+        aiPredictedClass: row.ai_predicted_class || null,
+        photos: typeof row.photos === 'string' ? JSON.parse(row.photos) : row.photos || [],
         referenceNumber: row.reference_number,
         supportCount: row.support_count,
         latitude: row.latitude ? parseFloat(row.latitude) : null,
@@ -480,6 +485,71 @@ export async function respondToCrewTaskRequest(req, res) {
   } catch (err) {
     console.error('Error in respondToCrewTaskRequest:', err);
     return res.status(500).json({ success: false, message: 'Failed to respond to task request.' });
+  }
+}
+
+/**
+ * Classify or reassign issue defect category (Admin)
+ */
+export async function classifyIssue(req, res) {
+  try {
+    const { id } = req.params;
+    const { category } = req.body || {};
+
+    if (!category || !category.trim()) {
+      return res.status(400).json({ success: false, message: 'Defect category is required.' });
+    }
+
+    const cleanCategory = category.trim().toLowerCase();
+
+    const issueRes = await query('SELECT * FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (!issueRes.rows.length) {
+      return res.status(404).json({ success: false, message: 'Issue not found.' });
+    }
+
+    const current = issueRes.rows[0];
+    const timeline =
+      typeof current.timeline === 'string'
+        ? JSON.parse(current.timeline)
+        : current.timeline || [];
+
+    const categoryNames = {
+      pothole: 'Pothole',
+      road: 'Broken Road',
+      drain: 'Open Drain',
+      light: 'Street Light',
+      signal: 'Traffic Signal',
+      footpath: 'Footpath',
+      water: 'Water Logging',
+      other: 'Others',
+    };
+
+    const label = categoryNames[cleanCategory] || cleanCategory;
+
+    timeline.push({
+      status: current.status,
+      label: `Defect classified as "${label}" by Municipal Administrator`,
+      at: new Date().toISOString(),
+    });
+
+    const updateRes = await query(
+      `UPDATE issues
+       SET category = $1, ai_needs_review = false, timeline = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [cleanCategory, JSON.stringify(timeline), id]
+    );
+
+    return res.json({
+      success: true,
+      message: `Issue classified as ${label}.`,
+      issue: updateRes.rows[0],
+      category: cleanCategory,
+      categoryLabel: label,
+    });
+  } catch (err) {
+    console.error('Error in classifyIssue:', err);
+    return res.status(500).json({ success: false, message: 'Failed to classify issue.' });
   }
 }
 

@@ -44,6 +44,8 @@ export async function initDb() {
       department VARCHAR(255),
       assigned_crew VARCHAR(255),
       ai_confidence NUMERIC(5, 2),
+      ai_needs_review BOOLEAN DEFAULT FALSE,
+      ai_predicted_class VARCHAR(100),
       timeline JSONB DEFAULT '[]'::jsonb,
       before_after JSONB,
       is_demo BOOLEAN DEFAULT FALSE,
@@ -172,6 +174,8 @@ export async function initDb() {
     await query("CREATE INDEX IF NOT EXISTS idx_issue_photo_hashes_hash ON issue_photo_hashes(image_hash)");
     await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Pune'");
     await query("ALTER TABLE issue_supports ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS ai_needs_review BOOLEAN DEFAULT FALSE");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS ai_predicted_class VARCHAR(100)");
     await query("UPDATE issues SET city = 'Pune' WHERE city = 'All Cities' OR city IS NULL");
 
     // Crew-specific migrations

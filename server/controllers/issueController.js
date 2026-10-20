@@ -89,6 +89,8 @@ function formatIssue(row, comments = [], userVote = null) {
     aiConfidence: row.ai_confidence
       ? parseFloat(row.ai_confidence)
       : null,
+    aiNeedsReview: !!row.ai_needs_review,
+    aiPredictedClass: row.ai_predicted_class || null,
     timeline:
       typeof row.timeline === 'string'
         ? JSON.parse(row.timeline)
@@ -115,6 +117,107 @@ function formatIssue(row, comments = [], userVote = null) {
           ? 'up'
           : null,
   };
+}
+
+/**
+ * Inspect uploaded photo in real time:
+ * 1. Checks if exact photo is already registered in DB (duplicate check)
+ * 2. Runs YOLO classification model to determine defect type and confidence
+ */
+export async function inspectPhoto(req, res) {
+  try {
+    const { photo } = req.body || {};
+
+    const rawData =
+      typeof photo === 'string'
+        ? photo
+        : photo?.dataUrl || photo?.url || '';
+
+    if (!rawData || typeof rawData !== 'string' || !rawData.startsWith('data:image/')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid base64 image data is required for inspection.',
+      });
+    }
+
+    // 1. Check duplicate via SHA-256 and normalized hashes
+    const hashes = await createImageHashes(rawData);
+    const hashesToCheck = [hashes?.exactHash, hashes?.normalizedHash].filter(Boolean);
+
+    if (hashesToCheck.length > 0) {
+      const duplicateRes = await query(
+        `SELECT
+           i.id,
+           i.reference_number,
+           i.title,
+           i.category,
+           i.status,
+           i.location_name,
+           i.created_at
+         FROM issue_photo_hashes h
+         JOIN issues i ON i.id = h.issue_id
+         WHERE h.image_hash = ANY($1::varchar[])
+         LIMIT 1`,
+        [hashesToCheck]
+      );
+
+      if (duplicateRes.rows.length > 0) {
+        const original = duplicateRes.rows[0];
+        return res.json({
+          success: true,
+          duplicate: true,
+          message:
+            'This photo has already been submitted. Please open the existing report instead of creating a duplicate.',
+          originalReport: {
+            id: original.id,
+            referenceNumber: original.reference_number,
+            title: original.title,
+            category: original.category,
+            status: original.status,
+            locationName: original.location_name,
+            createdAt: original.created_at,
+          },
+        });
+      }
+    }
+
+    // 2. Run AI model prediction
+    let aiPrediction = null;
+    try {
+      aiPrediction = await predictIssueImage(rawData);
+    } catch (aiErr) {
+      console.warn('Real-time AI inspection warning:', aiErr.message);
+    }
+
+    const needsReview = !aiPrediction || aiPrediction.needsReview;
+    const mappedCategory =
+      aiPrediction && !needsReview
+        ? aiPrediction.mappedCategory
+        : 'under_review';
+    const categoryLabel =
+      aiPrediction && !needsReview
+        ? aiPrediction.categoryLabel
+        : 'Under Review';
+
+    return res.json({
+      success: true,
+      duplicate: false,
+      prediction: {
+        predictedClass: aiPrediction?.predictedClass || null,
+        mappedCategory,
+        categoryLabel,
+        confidence: aiPrediction?.confidence ?? null,
+        confidencePercent: aiPrediction?.confidencePercent ?? null,
+        needsReview,
+      },
+    });
+  } catch (err) {
+    console.error('Error in inspectPhoto:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to inspect photo.',
+    });
+  }
 }
 
 /**
@@ -317,29 +420,12 @@ export async function createIssue(req, res) {
       });
     }
 
-    if (!category) {
-      return res.status(400).json({
-        success: false,
-        message: 'Category is required.',
-      });
-    }
-
     if (!Array.isArray(photos)) {
       return res.status(400).json({
         success: false,
         message: 'Photos must be provided as an array.',
       });
     }
-
-    // Assess severity
-    const severityAssessment = assessSeverity({
-      category,
-      title,
-      description,
-      citizenSeverity: severity,
-    });
-
-    const finalSeverity = severityAssessment.severity;
 
     // Resolve city
     let resolvedCity = (city || '').trim();
@@ -382,20 +468,28 @@ export async function createIssue(req, res) {
       }
     }
 
-    // Reject a photo that is already registered.
-    // The existing report is never modified by this check.
-    for (const { exactHash } of imageHashes) {
+    // Reject any photo that is already registered.
+    const allHashesToCheck = [];
+    for (const h of imageHashes) {
+      if (h.exactHash) allHashesToCheck.push(h.exactHash);
+      if (h.normalizedHash) allHashesToCheck.push(h.normalizedHash);
+    }
+
+    if (allHashesToCheck.length > 0) {
       const duplicateRes = await query(
         `SELECT
            i.id,
            i.reference_number,
            i.title,
-           i.status
+           i.category,
+           i.status,
+           i.location_name,
+           i.created_at
          FROM issue_photo_hashes h
          JOIN issues i ON i.id = h.issue_id
-         WHERE h.image_hash = $1
+         WHERE h.image_hash = ANY($1::varchar[])
          LIMIT 1`,
-        [exactHash]
+        [allHashesToCheck]
       );
 
       if (duplicateRes.rows.length > 0) {
@@ -410,42 +504,69 @@ export async function createIssue(req, res) {
             id: original.id,
             referenceNumber: original.reference_number,
             title: original.title,
+            category: original.category,
             status: original.status,
+            locationName: original.location_name,
+            createdAt: original.created_at,
           },
         });
       }
     }
 
-    
-  // Run YOLO prediction after duplicate checking.
-  let aiPrediction = null;
+    // Run YOLO prediction after duplicate checking (or use client-inspected prediction if provided).
+    let aiPrediction = req.body?.aiPrediction || null;
 
-  const firstImageData = photos
-    .map((photo) =>
-      typeof photo === "string"
-        ? photo
-        : photo?.dataUrl || photo?.url || ""
-    )
-    .find(
-      (image) =>
-        typeof image === "string" &&
-        image.startsWith("data:image/")
-    );
+    const firstImageData = photos
+      .map((photo) =>
+        typeof photo === "string"
+          ? photo
+          : photo?.dataUrl || photo?.url || ""
+      )
+      .find(
+        (image) =>
+          typeof image === "string" &&
+          image.startsWith("data:image/")
+      );
 
-  if (firstImageData) {
-    try {
-      aiPrediction = await predictIssueImage(firstImageData);
+    if (firstImageData && (!aiPrediction || typeof aiPrediction !== "object")) {
+      try {
+        aiPrediction = await predictIssueImage(firstImageData);
 
-      console.log("YOLO prediction:", {
-        predictedClass: aiPrediction.predictedClass,
-        confidencePercent: aiPrediction.confidencePercent,
-      });
-    } catch (aiError) {
-      // AI failure should not prevent a citizen from reporting an issue.
-      console.error("YOLO prediction failed:", aiError.message);
+        console.log("YOLO prediction:", {
+          predictedClass: aiPrediction.predictedClass,
+          mappedCategory: aiPrediction.mappedCategory,
+          confidencePercent: aiPrediction.confidencePercent,
+          needsReview: aiPrediction.needsReview,
+        });
+      } catch (aiError) {
+        // AI failure should not prevent a citizen from reporting an issue.
+        console.error("YOLO prediction failed:", aiError.message);
+      }
     }
-  }
 
+    // Automatic category determination:
+    // If AI is confident -> auto-assign predicted category.
+    // If AI is unsure, low confidence, or image unclear -> under_review with ai_needs_review = true.
+    let aiNeedsReview = false;
+    let finalCategory = category;
+
+    if (aiPrediction && !aiPrediction.needsReview && aiPrediction.mappedCategory) {
+      finalCategory = aiPrediction.mappedCategory;
+      aiNeedsReview = false;
+    } else if (!finalCategory || finalCategory === 'under_review') {
+      finalCategory = 'under_review';
+      aiNeedsReview = true;
+    }
+
+    // Assess severity based on final category and description indicators
+    const severityAssessment = assessSeverity({
+      category: finalCategory,
+      title,
+      description,
+      citizenSeverity: severity,
+    });
+
+    const finalSeverity = severityAssessment.severity;
 
     // Generate report reference and ID.
     const countRes = await query('SELECT COUNT(*) FROM issues');
@@ -462,7 +583,9 @@ export async function createIssue(req, res) {
     const timeline = [
       {
         status: 'reported',
-        label: `Reported by ${reporterName}`,
+        label: aiNeedsReview
+          ? `Reported by ${reporterName} (Pending Admin Classification)`
+          : `Reported by ${reporterName}`,
         at: nowIso,
       },
     ];
@@ -490,6 +613,8 @@ export async function createIssue(req, res) {
         reporter_id,
         reporter_name,
         ai_confidence,
+        ai_needs_review,
+        ai_predicted_class,
         timeline,
         is_demo,
         created_by_user,
@@ -499,70 +624,91 @@ export async function createIssue(req, res) {
       VALUES (
         $1, $2, $3, $4, $5, $6, 'reported',
         $7, $8, $9, $10, $11, $12,
-        0, 0, $13, $14, $15,
-        $16, false, true, NOW(), NOW()
+        0, 0, $13, $14, $15, $16, $17,
+        $18, false, true, NOW(), NOW()
       )
       RETURNING *
     `;
 
-    
-const insertRes = await query(insertSql, [
-  id,
-  referenceNumber,
-  title.trim(),
-  description ? description.trim() : '',
-  category,
-  finalSeverity,
-  resolvedCity,
-  locationName ? locationName.trim() : resolvedCity,
-  latitude ?? null,
-  longitude ?? null,
-  mapPos ? JSON.stringify(mapPos) : null,
-  JSON.stringify(savedPhotos),
-  reporterId,
-  reporterName,
-  aiPrediction?.confidencePercent ?? null,
-  JSON.stringify(timeline),
-]);
-
+    const insertRes = await query(insertSql, [
+      id,
+      referenceNumber,
+      title.trim(),
+      description ? description.trim() : '',
+      finalCategory,
+      finalSeverity,
+      resolvedCity,
+      locationName ? locationName.trim() : resolvedCity,
+      latitude ?? null,
+      longitude ?? null,
+      mapPos ? JSON.stringify(mapPos) : null,
+      JSON.stringify(savedPhotos),
+      reporterId,
+      reporterName,
+      aiPrediction?.confidencePercent ?? null,
+      aiNeedsReview,
+      aiPrediction?.predictedClass ?? null,
+      JSON.stringify(timeline),
+    ]);
 
     // Register photo hashes against the newly created report.
-    for (const { exactHash } of imageHashes) {
-      await query(
-        `INSERT INTO issue_photo_hashes (issue_id, image_hash)
-         VALUES ($1, $2)
-         ON CONFLICT (image_hash) DO NOTHING`,
-        [id, exactHash]
-      );
+    for (const { exactHash, normalizedHash } of imageHashes) {
+      if (exactHash) {
+        await query(
+          `INSERT INTO issue_photo_hashes (issue_id, image_hash)
+           VALUES ($1, $2)
+           ON CONFLICT (image_hash) DO NOTHING`,
+          [id, exactHash]
+        );
+      }
+      if (normalizedHash && normalizedHash !== exactHash) {
+        await query(
+          `INSERT INTO issue_photo_hashes (issue_id, image_hash)
+           VALUES ($1, $2)
+           ON CONFLICT (image_hash) DO NOTHING`,
+          [id, normalizedHash]
+        );
+      }
     }
 
     // Notify administrators.
+    const notifTitle = aiNeedsReview
+      ? `Action Required: Unclassified Report ${referenceNumber}`
+      : `New Civic Report: ${title.trim()}`;
+
+    const notifMessage = aiNeedsReview
+      ? `Reported in ${resolvedCity}. Image was not clear enough for AI to determine defect type. Municipal Admin review required to classify.`
+      : `Reported in ${resolvedCity} (${locationName || 'General zone'}) with ${finalSeverity.toUpperCase()} priority. Reference: ${referenceNumber}`;
+
     await query(
       `INSERT INTO notifications (title, message, type, issue_id)
        VALUES ($1, $2, $3, $4)`,
       [
-        `New Civic Report: ${title.trim()}`,
-        `Reported in ${resolvedCity} (${locationName || 'General zone'}) with ${finalSeverity.toUpperCase()} priority. Reference: ${referenceNumber}`,
-        finalSeverity === 'high' ? 'urgent' : 'info',
+        notifTitle,
+        notifMessage,
+        aiNeedsReview || finalSeverity === 'high' ? 'urgent' : 'info',
         id,
       ]
     );
 
     const formatted = formatIssue(insertRes.rows[0], [], false);
 
-return res.status(201).json({
-  success: true,
-  message: 'Issue reported successfully.',
-  issue: formatted,
-  aiPrediction: aiPrediction
-    ? {
-        predictedClass: aiPrediction.predictedClass,
-        confidence: aiPrediction.confidence,
-        confidencePercent: aiPrediction.confidencePercent,
-        needsReview: aiPrediction.needsReview,
-      }
-    : null,
-});
+    return res.status(201).json({
+      success: true,
+      message: aiNeedsReview
+        ? 'Issue reported successfully. Routed to municipal administration for defect classification.'
+        : 'Issue reported successfully.',
+      issue: formatted,
+      aiPrediction: aiPrediction
+        ? {
+            predictedClass: aiPrediction.predictedClass,
+            mappedCategory: aiPrediction.mappedCategory,
+            confidence: aiPrediction.confidence,
+            confidencePercent: aiPrediction.confidencePercent,
+            needsReview: aiNeedsReview,
+          }
+        : null,
+    });
   } catch (err) {
     console.error('Error in createIssue:', err);
 

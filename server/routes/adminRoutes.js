@@ -12,10 +12,14 @@ import {
   clearAllNotifications,
   getCrewTaskRequests,
   respondToCrewTaskRequest,
+  classifyIssue,
 } from '../controllers/adminController.js';
 import { authenticateToken, requireRole, optionalAuth } from '../middleware/authMiddleware.js';
 
 const router = Router();
+
+// Issue defect classification (Admin)
+router.patch('/issues/:id/classify', authenticateToken, requireRole('admin'), classifyIssue);
 
 // Read-only endpoints allow optional authentication so live data can be displayed
 router.get('/overview', optionalAuth, getOverviewStats);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  inspectPhoto,
   getIssues,
   getIssueById,
   createIssue,
@@ -12,6 +13,9 @@ import {
 import { optionalAuth, authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = Router();
+
+// Real-time photo inspection (duplicate check + AI classification)
+router.post('/inspect-photo', optionalAuth, inspectPhoto);
 
 // Notifications feed (placed before /:id)
 router.get('/feed/notifications', optionalAuth, getNotifications);

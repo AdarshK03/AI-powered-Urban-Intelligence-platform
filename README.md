@@ -105,39 +105,42 @@ The platform features a complete **Node.js / Express** authentication flow conne
 - npm or yarn
 
 ### 1. Install Dependencies
-Run the following from the root directory to install both client and server packages:
+Run the following from the root directory to install all packages:
 ```bash
 npm run install:all
 ```
 
-Or install them individually:
-```bash
-cd server && npm install
-cd ../client && npm install
-```
+---
 
-### 2. Start the Backend Server (`server`)
+### Quick Start: Run All 3 Services Together
+From the root directory, run:
 ```bash
-npm run server
-# or: cd server && npm run dev
+npm run dev:all
 ```
-The server will start on `http://localhost:5001`.
+*(Or on Windows, simply double-click `start-all.bat`)*
 
-### 3. Start the AI Model Service (`ml-service`)
-In a new terminal:
-```bash
-cd ml-service
-python -m venv .venv
-# Windows: .venv\Scripts\activate | Unix: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app:app --host 127.0.0.1 --port 8000 --reload
-```
-The AI inference service will start on `http://127.0.0.1:8000`.
+This starts the **Express Backend Server** (:5001), **React Client** (:5173), and **AI ML Service** (:8000) simultaneously in a single terminal with color-coded logs.
 
-### 4. Start the Frontend Application (`client`)
-In a new terminal:
-```bash
-npm run client
-# or: cd client && npm run dev
-```
-The client will start on `http://localhost:5173`.
+---
+
+### Alternative: Run Services in Separate Terminals (For Testing)
+If you prefer running each service in its own dedicated terminal:
+
+* **Terminal 1 - Backend Server (`server`):**
+  ```bash
+  npm run server
+  ```
+  Runs on `http://localhost:5001`.
+
+* **Terminal 2 - Frontend Application (`client`):**
+  ```bash
+  npm run client
+  ```
+  Runs on `http://localhost:5173`.
+
+* **Terminal 3 - AI Model Service (`ml-service`):**
+  ```bash
+  npm run ml
+  ```
+  Runs on `http://127.0.0.1:8000`.
+

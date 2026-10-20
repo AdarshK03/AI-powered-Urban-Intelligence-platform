@@ -9,6 +9,11 @@
     "server:start": "npm --prefix server start",
     "client": "npm --prefix client run dev",
     "client:build": "npm --prefix client run build",
-    "install:all": "npm install --prefix server && npm install --prefix client"
+    "ml": "node scripts/start-ml.js",
+    "dev:all": "concurrently -n \"SERVER,CLIENT,ML\" -c \"blue.bold,green.bold,magenta.bold\" \"npm run server\" \"npm run client\" \"npm run ml\"",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
   }
 }
