@@ -9,6 +9,8 @@ import {
   updateIssueStatus,
   deleteIssue,
   getNotifications,
+  rateCrew,
+  getCrewRating,
 } from '../controllers/issueController.js';
 import { optionalAuth, authenticateToken } from '../middleware/authMiddleware.js';
 
@@ -30,6 +32,10 @@ router.post('/', authenticateToken, createIssue);
 // Social / Engagement (supports voting: upvote & downvote)
 router.post('/:id/support', optionalAuth, supportIssue);
 router.post('/:id/comments', optionalAuth, addComment);
+
+// Crew Performance Rating by Citizens
+router.post('/:id/rate-crew', authenticateToken, rateCrew);
+router.get('/:id/rating', optionalAuth, getCrewRating);
 
 // Admin / Authority management
 router.patch('/:id/status', authenticateToken, updateIssueStatus);

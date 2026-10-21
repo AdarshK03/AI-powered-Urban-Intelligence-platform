@@ -126,7 +126,12 @@ export async function getOverviewStats(req, res) {
         category: categoryLabels[row.category] || row.category,
         categoryRaw: row.category,
         priority: row.severity.charAt(0).toUpperCase() + row.severity.slice(1),
-        status: row.status === 'in_progress' ? 'In Progress' : row.status.charAt(0).toUpperCase() + row.status.slice(1),
+        status:
+          row.status === 'in_progress'
+            ? 'In Progress'
+            : row.status === 'work_completed'
+            ? 'Work Completed'
+            : row.status.charAt(0).toUpperCase() + row.status.slice(1),
         reportedOn: new Date(row.reported_at || row.created_at).toLocaleDateString('en-GB', {
           day: 'numeric',
           month: 'short',
@@ -139,6 +144,18 @@ export async function getOverviewStats(req, res) {
         aiNeedsReview: !!row.ai_needs_review,
         aiPredictedClass: row.ai_predicted_class || null,
         photos: typeof row.photos === 'string' ? JSON.parse(row.photos) : row.photos || [],
+        rawStatus: row.status,
+        assignmentStatus: row.assignment_status || 'pending',
+        workDonePhotos: typeof row.work_done_photos === 'string' ? JSON.parse(row.work_done_photos) : row.work_done_photos || [],
+        workDoneNotes: row.work_done_notes || '',
+        workSubmittedAt: row.work_submitted_at ? new Date(row.work_submitted_at).toISOString() : null,
+        workApprovedAt: row.work_approved_at ? new Date(row.work_approved_at).toISOString() : null,
+        firstAssignedAt: row.first_assigned_at ? new Date(row.first_assigned_at).toISOString() : null,
+        adminFeedback: row.admin_feedback || '',
+        crewRatingAvg: row.crew_rating_avg ? parseFloat(row.crew_rating_avg) : 0,
+        crewRatingCount: parseInt(row.crew_rating_count, 10) || 0,
+        timeline: typeof row.timeline === 'string' ? JSON.parse(row.timeline) : row.timeline || [],
+        beforeAfter: typeof row.before_after === 'string' ? JSON.parse(row.before_after) : row.before_after || null,
         referenceNumber: row.reference_number,
         supportCount: row.support_count,
         latitude: row.latitude ? parseFloat(row.latitude) : null,
@@ -262,6 +279,7 @@ export async function assignCrew(req, res) {
            assigned_crew = $1,
            assignment_status = 'pending',
            status = 'in_progress',
+           first_assigned_at = COALESCE(first_assigned_at, NOW()),
            timeline = $2,
            updated_at = NOW()
          WHERE id = $3`,
@@ -427,6 +445,7 @@ export async function respondToCrewTaskRequest(req, res) {
            assigned_crew = $1,
            assignment_status = 'accepted',
            status = 'in_progress',
+           first_assigned_at = COALESCE(first_assigned_at, NOW()),
            timeline = $2,
            updated_at = NOW()
          WHERE id = $3`,
@@ -550,6 +569,154 @@ export async function classifyIssue(req, res) {
   } catch (err) {
     console.error('Error in classifyIssue:', err);
     return res.status(500).json({ success: false, message: 'Failed to classify issue.' });
+  }
+}
+
+/**
+ * POST /api/admin/issues/:id/review-work
+ * Municipal Admin reviews completed work by crew:
+ * action: 'approve' (publishes before/after to citizens, marks resolved, frees crew)
+ * action: 'request_rework' (keeps in_progress, sends feedback notes to crew)
+ */
+export async function reviewWorkDone(req, res) {
+  try {
+    const { id } = req.params;
+    const { action, feedbackNotes } = req.body || {};
+
+    if (!action || !['approve', 'request_rework'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Action must be "approve" or "request_rework".' });
+    }
+
+    const issueRes = await query('SELECT * FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (issueRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Issue not found.' });
+    }
+
+    const issue = issueRes.rows[0];
+    const timeline = typeof issue.timeline === 'string' ? JSON.parse(issue.timeline) : issue.timeline || [];
+    const nowIso = new Date().toISOString();
+
+    // Find crew leader to notify
+    const crewRes = await query('SELECT * FROM crews WHERE name = $1 LIMIT 1', [issue.assigned_crew]);
+    const crew = crewRes.rows[0] || null;
+
+    if (action === 'approve') {
+      const citizenPhotos = typeof issue.photos === 'string' ? JSON.parse(issue.photos) : issue.photos || [];
+      const repairPhotos = typeof issue.work_done_photos === 'string' ? JSON.parse(issue.work_done_photos) : issue.work_done_photos || [];
+
+      const beforeImg = citizenPhotos[0]?.url || (typeof citizenPhotos[0] === 'string' ? citizenPhotos[0] : null);
+      const afterImg = repairPhotos[0]?.url || (typeof repairPhotos[0] === 'string' ? repairPhotos[0] : null);
+
+      const beforeAfter = {
+        before: beforeImg,
+        after: afterImg,
+        notes: issue.work_done_notes || 'Repairs verified and approved by Municipal Administration.',
+      };
+
+      timeline.push({
+        status: 'resolved',
+        label: 'Repairs inspected, approved, and published to Public Citizen Registry by Municipal Administration.',
+        at: nowIso,
+      });
+
+      const updatedIssue = await query(
+        `UPDATE issues SET
+           status = 'resolved',
+           assignment_status = 'approved',
+           work_approved_at = NOW(),
+           before_after = $1,
+           timeline = $2,
+           updated_at = NOW()
+         WHERE id = $3
+         RETURNING *`,
+        [JSON.stringify(beforeAfter), JSON.stringify(timeline), id]
+      );
+
+      // Free the crew
+      if (crew) {
+        await query(
+          "UPDATE crews SET assigned_issue_id = null, status = 'Available' WHERE id = $1",
+          [crew.id]
+        );
+      }
+
+      // Notify Crew Leader
+      if (crew?.leader_id) {
+        await query(
+          `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+           VALUES ($1, $2, 'task_assignment', $3, $4, 'crew')`,
+          [
+            `Repairs Approved: ${issue.title}`,
+            `Municipal Administration has inspected and approved your repair work for ${issue.reference_number}. The work has been published to the citizen portal.`,
+            id,
+            crew.leader_id,
+          ]
+        );
+      }
+
+      // Notify Citizen Reporter
+      if (issue.reporter_id) {
+        await query(
+          `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+           VALUES ($1, $2, 'info', $3, $4, 'citizen')`,
+          [
+            `Repairs Completed: ${issue.title}`,
+            `The civic issue you reported (${issue.reference_number}) has been repaired by ${issue.assigned_crew || 'Municipal Crew'}. Tap to view resolution evidence and rate the crew's work!`,
+            id,
+            issue.reporter_id,
+          ]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Work completion approved and published to Citizen Portal. Issue marked as Resolved.',
+        issue: updatedIssue.rows[0],
+      });
+    } else if (action === 'request_rework') {
+      const feedback = feedbackNotes && feedbackNotes.trim() ? feedbackNotes.trim() : 'Additional repair work is needed to meet municipal standards.';
+
+      timeline.push({
+        status: 'in_progress',
+        label: `Inspection feedback: Admin requested rework. Reason: ${feedback}`,
+        at: nowIso,
+      });
+
+      const updatedIssue = await query(
+        `UPDATE issues SET
+           status = 'in_progress',
+           assignment_status = 'rework_required',
+           admin_feedback = $1,
+           timeline = $2,
+           updated_at = NOW()
+         WHERE id = $3
+         RETURNING *`,
+        [feedback, JSON.stringify(timeline), id]
+      );
+
+      // Notify Crew Leader with urgent priority
+      if (crew?.leader_id) {
+        await query(
+          `INSERT INTO notifications (title, message, type, issue_id, recipient_id, recipient_role)
+           VALUES ($1, $2, 'urgent', $3, $4, 'crew')`,
+          [
+            `Rework Requested: ${issue.title}`,
+            `Admin inspection note: "${feedback}". Please address the required fixes and resubmit completed work.`,
+            id,
+            crew.leader_id,
+          ]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Rework request sent to crew leader with instructions.',
+        issue: updatedIssue.rows[0],
+      });
+    }
+  } catch (err) {
+    console.error('Error in reviewWorkDone:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process work review.' });
   }
 }
 

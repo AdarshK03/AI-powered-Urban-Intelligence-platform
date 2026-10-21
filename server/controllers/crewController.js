@@ -382,6 +382,12 @@ export async function getCrewTasks(req, res) {
       latitude: row.latitude ? parseFloat(row.latitude) : null,
       longitude: row.longitude ? parseFloat(row.longitude) : null,
       photos: typeof row.photos === 'string' ? JSON.parse(row.photos) : row.photos || [],
+      workDonePhotos: typeof row.work_done_photos === 'string' ? JSON.parse(row.work_done_photos) : row.work_done_photos || [],
+      workDoneNotes: row.work_done_notes || '',
+      adminFeedback: row.admin_feedback || '',
+      workSubmittedAt: row.work_submitted_at ? new Date(row.work_submitted_at).toISOString() : null,
+      workApprovedAt: row.work_approved_at ? new Date(row.work_approved_at).toISOString() : null,
+      firstAssignedAt: row.first_assigned_at ? new Date(row.first_assigned_at).toISOString() : null,
       reportedAt: (row.reported_at || row.created_at).toISOString(),
       updatedAt: (row.updated_at || row.created_at).toISOString(),
       timeline: typeof row.timeline === 'string' ? JSON.parse(row.timeline) : row.timeline || [],
@@ -711,6 +717,130 @@ export async function deleteTaskRequest(req, res) {
   } catch (err) {
     console.error('Error in deleteTaskRequest:', err);
     return res.status(500).json({ success: false, message: 'Failed to remove task request.' });
+  }
+}
+
+/**
+ * Helper to process and save work-done photos uploaded by the crew leader
+ */
+function processWorkDonePhotos(photosList, issueId) {
+  if (!Array.isArray(photosList)) return [];
+
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  return photosList.map((photo, idx) => {
+    const rawUrl =
+      typeof photo === 'string'
+        ? photo
+        : photo?.url || photo?.dataUrl || '';
+
+    const photoName = photo?.name || `repair_photo_${idx + 1}.jpg`;
+
+    if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
+      try {
+        const matches = rawUrl.match(
+          /^data:image\/([a-zA-Z0-9.+-]+);base64,(.+)$/
+        );
+
+        if (matches) {
+          const ext = matches[1].replace('jpeg', 'jpg');
+          const base64Data = matches[2];
+          const buffer = Buffer.from(base64Data, 'base64');
+          const fileName = `${issueId}_workdone_${idx}_${Date.now()}.${ext}`;
+          const filePath = path.join(uploadsDir, fileName);
+
+          fs.writeFileSync(filePath, buffer);
+
+          return {
+            url: `/uploads/${fileName}`,
+            name: photoName,
+          };
+        }
+      } catch (err) {
+        console.error('Failed to save uploaded work-done photo to disk:', err);
+      }
+    }
+
+    return {
+      url: rawUrl,
+      name: photoName,
+    };
+  });
+}
+
+/**
+ * POST /api/crew/tasks/:id/submit-work
+ * Crew leader uploads completed repair photos and notes, submitting for municipal admin approval
+ */
+export async function submitWorkDone(req, res) {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { photos = [], notes = '' } = req.body || {};
+
+    const crew = await getOrCreateCrewForLeader(user);
+
+    const issueRes = await query('SELECT * FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (issueRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task issue not found.' });
+    }
+
+    const issue = issueRes.rows[0];
+
+    // Verify crew assignment
+    if (issue.assigned_crew && issue.assigned_crew !== crew.name && crew.assigned_issue_id !== id) {
+      return res.status(403).json({ success: false, message: 'Your crew is not assigned to this issue.' });
+    }
+
+    if (!Array.isArray(photos) || photos.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one photo of the completed repair work is required.' });
+    }
+
+    const savedPhotos = processWorkDonePhotos(photos, id);
+    const timeline = typeof issue.timeline === 'string' ? JSON.parse(issue.timeline) : issue.timeline || [];
+    const nowIso = new Date().toISOString();
+
+    timeline.push({
+      status: 'work_completed',
+      label: `Repairs completed by ${crew.name}. Awaiting Municipal Admin inspection & approval.`,
+      at: nowIso,
+    });
+
+    const updateRes = await query(
+      `UPDATE issues SET
+         status = 'work_completed',
+         assignment_status = 'work_submitted',
+         work_done_photos = $1,
+         work_done_notes = $2,
+         work_submitted_at = NOW(),
+         timeline = $3,
+         updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [JSON.stringify(savedPhotos), (notes || '').trim(), JSON.stringify(timeline), id]
+    );
+
+    // Notify municipal administration
+    await query(
+      `INSERT INTO notifications (title, message, type, issue_id)
+       VALUES ($1, $2, 'urgent', $3)`,
+      [
+        `Work Done Submitted: ${issue.title}`,
+        `Crew "${crew.name}" has completed repair work for ${issue.reference_number}. Review before/after photos and approve to publish to citizens.`,
+        id,
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Work completion report submitted successfully. Awaiting Municipal Admin inspection and approval.',
+      issue: updateRes.rows[0],
+    });
+  } catch (err) {
+    console.error('Error in submitWorkDone:', err);
+    return res.status(500).json({ success: false, message: 'Failed to submit completed work report.' });
   }
 }
 

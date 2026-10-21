@@ -99,6 +99,17 @@ function formatIssue(row, comments = [], userVote = null) {
       typeof row.before_after === 'string'
         ? JSON.parse(row.before_after)
         : row.before_after || null,
+    firstAssignedAt: row.first_assigned_at ? new Date(row.first_assigned_at).toISOString() : null,
+    workDonePhotos:
+      typeof row.work_done_photos === 'string'
+        ? JSON.parse(row.work_done_photos)
+        : row.work_done_photos || [],
+    workDoneNotes: row.work_done_notes || '',
+    workSubmittedAt: row.work_submitted_at ? new Date(row.work_submitted_at).toISOString() : null,
+    workApprovedAt: row.work_approved_at ? new Date(row.work_approved_at).toISOString() : null,
+    adminFeedback: row.admin_feedback || '',
+    crewRatingAvg: row.crew_rating_avg ? parseFloat(row.crew_rating_avg) : 0,
+    crewRatingCount: parseInt(row.crew_rating_count, 10) || 0,
     isDemo: !!row.is_demo,
     createdByUser: !!row.created_by_user,
     reportedAt: (row.reported_at || row.created_at).toISOString(),
@@ -1202,3 +1213,142 @@ export async function getNotifications(req, res) {
     });
   }
 }
+
+/**
+ * Rate the assigned crew's completed repair work (Citizens)
+ * POST /api/issues/:id/rate-crew
+ */
+export async function rateCrew(req, res) {
+  try {
+    const { id } = req.params;
+    const { rating, feedback } = req.body || {};
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to rate the crew.' });
+    }
+
+    const numericRating = parseInt(rating, 10);
+    if (!numericRating || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be an integer between 1 and 5 stars.' });
+    }
+
+    const issueRes = await query('SELECT * FROM issues WHERE id = $1 LIMIT 1', [id]);
+    if (!issueRes.rows.length) {
+      return res.status(404).json({ success: false, message: 'Issue not found.' });
+    }
+
+    const issue = issueRes.rows[0];
+
+    if (issue.status !== 'resolved') {
+      return res.status(400).json({ success: false, message: 'You can only rate the crew after repair work has been completed and verified.' });
+    }
+
+    if (!issue.assigned_crew) {
+      return res.status(400).json({ success: false, message: 'No crew was assigned to this repair.' });
+    }
+
+    // Find crew id
+    const crewRes = await query('SELECT id FROM crews WHERE name = $1 LIMIT 1', [issue.assigned_crew]);
+    const crewId = crewRes.rows[0]?.id || null;
+
+    // Upsert into crew_ratings
+    await query(
+      `INSERT INTO crew_ratings (issue_id, crew_id, user_id, rating, feedback)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (issue_id, user_id)
+       DO UPDATE SET rating = EXCLUDED.rating, feedback = EXCLUDED.feedback, created_at = NOW()`,
+      [id, crewId, userId, numericRating, (feedback || '').trim()]
+    );
+
+    // Recalculate issue's crew_rating_avg & crew_rating_count
+    const issueRatingStats = await query(
+      `SELECT AVG(rating)::numeric(3,2) as avg_rating, COUNT(*)::int as total_count
+       FROM crew_ratings WHERE issue_id = $1`,
+      [id]
+    );
+
+    const issueAvg = parseFloat(issueRatingStats.rows[0]?.avg_rating) || numericRating;
+    const issueCount = parseInt(issueRatingStats.rows[0]?.total_count, 10) || 1;
+
+    await query(
+      `UPDATE issues SET
+         crew_rating_avg = $1,
+         crew_rating_count = $2,
+         updated_at = NOW()
+       WHERE id = $3`,
+      [issueAvg, issueCount, id]
+    );
+
+    // Recalculate crew's overall cumulative average_rating & total_ratings
+    if (crewId) {
+      const crewStats = await query(
+        `SELECT AVG(rating)::numeric(3,2) as avg_rating, COUNT(*)::int as total_count
+         FROM crew_ratings WHERE crew_id = $1`,
+        [crewId]
+      );
+
+      const crewAvg = parseFloat(crewStats.rows[0]?.avg_rating) || 5.0;
+      const crewTotal = parseInt(crewStats.rows[0]?.total_count, 10) || 0;
+
+      await query(
+        `UPDATE crews SET
+           average_rating = $1,
+           total_ratings = $2
+         WHERE id = $3`,
+        [crewAvg, crewTotal, crewId]
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'Thank you for your rating! Your feedback helps ensure high-quality municipal repairs.',
+      rating: numericRating,
+      crewRatingAvg: issueAvg,
+      crewRatingCount: issueCount,
+    });
+  } catch (err) {
+    console.error('Error in rateCrew:', err);
+    return res.status(500).json({ success: false, message: 'Failed to record crew rating.' });
+  }
+}
+
+/**
+ * Get current citizen's rating for an issue
+ * GET /api/issues/:id/rating
+ */
+export async function getCrewRating(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    let userRating = null;
+    if (userId) {
+      const rRes = await query(
+        'SELECT rating, feedback, created_at FROM crew_ratings WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
+        [id, userId]
+      );
+      if (rRes.rows.length > 0) {
+        userRating = {
+          rating: rRes.rows[0].rating,
+          feedback: rRes.rows[0].feedback,
+          createdAt: rRes.rows[0].created_at,
+        };
+      }
+    }
+
+    const issueRes = await query('SELECT crew_rating_avg, crew_rating_count, assigned_crew FROM issues WHERE id = $1 LIMIT 1', [id]);
+    const issue = issueRes.rows[0];
+
+    return res.json({
+      success: true,
+      userRating,
+      crewRatingAvg: issue ? parseFloat(issue.crew_rating_avg) || 0 : 0,
+      crewRatingCount: issue ? parseInt(issue.crew_rating_count, 10) || 0 : 0,
+      assignedCrew: issue?.assigned_crew || null,
+    });
+  } catch (err) {
+    console.error('Error in getCrewRating:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch rating.' });
+  }
+}

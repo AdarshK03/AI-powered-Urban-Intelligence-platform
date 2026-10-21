@@ -8,6 +8,7 @@ import {
   getCrewNotifications,
   getCrewTasks,
   respondToTask,
+  submitWorkDone,
   requestTaskAssignment,
   getMyTaskRequests,
   resendTaskRequest,
@@ -35,6 +36,9 @@ router.get('/notifications', getCrewNotifications);
 // Assigned work orders & respond (accept/reject)
 router.get('/tasks', getCrewTasks);
 router.post('/tasks/:id/respond', respondToTask);
+
+// Work completion submission
+router.post('/tasks/:id/submit-work', submitWorkDone);
 
 // Task requests: request assignment on unassigned map defect
 router.post('/request-task', requestTaskAssignment);

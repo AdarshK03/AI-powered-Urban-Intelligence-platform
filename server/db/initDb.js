@@ -48,10 +48,29 @@ export async function initDb() {
       ai_predicted_class VARCHAR(100),
       timeline JSONB DEFAULT '[]'::jsonb,
       before_after JSONB,
+      first_assigned_at TIMESTAMPTZ,
+      work_done_photos JSONB DEFAULT '[]'::jsonb,
+      work_done_notes TEXT,
+      work_submitted_at TIMESTAMPTZ,
+      work_approved_at TIMESTAMPTZ,
+      admin_feedback TEXT,
+      crew_rating_avg NUMERIC(3, 2) DEFAULT 0,
+      crew_rating_count INTEGER DEFAULT 0,
       is_demo BOOLEAN DEFAULT FALSE,
       created_by_user BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS crew_ratings (
+      id SERIAL PRIMARY KEY,
+      issue_id VARCHAR(100) NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+      crew_id VARCHAR(100) REFERENCES crews(id) ON DELETE SET NULL,
+      user_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+      feedback TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (issue_id, user_id)
     );
 
     CREATE TABLE IF NOT EXISTS issue_supports (
@@ -181,11 +200,37 @@ export async function initDb() {
     // Crew-specific migrations
     await query("ALTER TABLE crews ADD COLUMN IF NOT EXISTS leader_id VARCHAR(100)");
     await query("ALTER TABLE crews ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Pune'");
+    await query("ALTER TABLE crews ADD COLUMN IF NOT EXISTS average_rating NUMERIC(3, 2) DEFAULT 5.0");
+    await query("ALTER TABLE crews ADD COLUMN IF NOT EXISTS total_ratings INTEGER DEFAULT 0");
     await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS assignment_status VARCHAR(50) DEFAULT 'pending'");
     await query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_id VARCHAR(100)");
     await query("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_role VARCHAR(50)");
     await query("ALTER TABLE crew_task_requests ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0");
     await query("ALTER TABLE crew_task_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT");
+
+    // Work-Done and Crew Ratings migrations
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS first_assigned_at TIMESTAMPTZ");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS work_done_photos JSONB DEFAULT '[]'::jsonb");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS work_done_notes TEXT");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS work_submitted_at TIMESTAMPTZ");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS work_approved_at TIMESTAMPTZ");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS admin_feedback TEXT");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS crew_rating_avg NUMERIC(3, 2) DEFAULT 0");
+    await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS crew_rating_count INTEGER DEFAULT 0");
+    await query(`
+      CREATE TABLE IF NOT EXISTS crew_ratings (
+        id SERIAL PRIMARY KEY,
+        issue_id VARCHAR(100) NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+        crew_id VARCHAR(100) REFERENCES crews(id) ON DELETE SET NULL,
+        user_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        feedback TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (issue_id, user_id)
+      )
+    `);
+    await query("CREATE INDEX IF NOT EXISTS idx_crew_ratings_issue ON crew_ratings(issue_id)");
+    await query("CREATE INDEX IF NOT EXISTS idx_crew_ratings_crew ON crew_ratings(crew_id)");
 
     // Seed default crews if empty
     const crewsCheck = await query('SELECT COUNT(*) FROM crews');

@@ -13,6 +13,7 @@ import {
   getCrewTaskRequests,
   respondToCrewTaskRequest,
   classifyIssue,
+  reviewWorkDone,
 } from '../controllers/adminController.js';
 import { authenticateToken, requireRole, optionalAuth } from '../middleware/authMiddleware.js';
 
@@ -20,6 +21,9 @@ const router = Router();
 
 // Issue defect classification (Admin)
 router.patch('/issues/:id/classify', authenticateToken, requireRole('admin'), classifyIssue);
+
+// Review and approve/request rework on completed repairs by crew (Admin)
+router.post('/issues/:id/review-work', authenticateToken, requireRole('admin'), reviewWorkDone);
 
 // Read-only endpoints allow optional authentication so live data can be displayed
 router.get('/overview', optionalAuth, getOverviewStats);
