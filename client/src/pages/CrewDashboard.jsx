@@ -314,10 +314,31 @@ export default function CrewDashboard() {
       } else {
         showToast(data.message || 'Failed to process task decision.', 'error');
       }
+      } catch (err) {
+        showToast('Error responding to work order.', 'error');
+      } finally {
+        setIsRespondingTask(false);
+      }
+    };
+
+  // Action: Submit completed work evidence for admin review
+  const handleSubmitWorkDone = async (taskId, { photos, notes }) => {
+    try {
+      const res = await fetch(`/api/crew/tasks/${taskId}/submit-work`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ photos, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to submit completed work.');
+      }
+      showToast(data.message || 'Work submitted for admin verification!', 'success');
+      await Promise.all([fetchTasks(), fetchCrewProfile(), fetchNotifications()]);
+      return true;
     } catch (err) {
-      showToast('Error responding to work order.', 'error');
-    } finally {
-      setIsRespondingTask(false);
+      showToast(err.message || 'Error submitting completed work.', 'error');
+      return false;
     }
   };
 
@@ -573,6 +594,7 @@ export default function CrewDashboard() {
                     key={task.id}
                     task={task}
                     onRespond={handleRespondToTask}
+                    onSubmitWork={handleSubmitWorkDone}
                     isResponding={isRespondingTask}
                     highlight={task.id === highlightTaskId}
                   />

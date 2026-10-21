@@ -608,6 +608,36 @@ export default function AdminDashboard({ onExit } = {}) {
     }
   }
 
+  // Admin reviews completed repair work (approve or request rework)
+  const handleReviewWork = async (issueId, action, feedbackNotes) => {
+    try {
+      const res = await fetch(`/api/admin/issues/${issueId}/review-work`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action, feedbackNotes }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Failed to review completed work.', 'error')
+        return
+      }
+
+      showToast(data.message, 'success')
+      await Promise.all([fetchAdminOverview(), fetchAdminMetadata()])
+
+      if (selectedReportForView && selectedReportForView.id === issueId) {
+        setSelectedReportForView(null)
+      }
+    } catch (err) {
+      console.error('Error reviewing work done:', err)
+      showToast('Failed to review completed work.', 'error')
+    }
+  }
+
   // Update crew status (e.g. Job complete or recall)
   const handleUpdateCrewStatus = (crewId, newStatus) => {
     setCrews((prev) =>
@@ -979,6 +1009,7 @@ export default function AdminDashboard({ onExit } = {}) {
           onDeleteIssue={handleDeleteIssue}
           onAssignCrew={handleAssignCrew}
           onClassifyIssue={handleClassifyIssue}
+          onReviewWork={handleReviewWork}
           crews={crews}
         />
       )}
