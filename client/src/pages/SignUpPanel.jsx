@@ -33,6 +33,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -155,7 +156,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
     if (result.success) {
       setNotice(
         portal === 'crew'
-          ? 'Crew Leader account registered and synced to database! Redirecting...'
+          ? 'Crew Leader account registered successfully! Redirecting...'
           : 'Account created successfully! Redirecting...'
       );
 
@@ -348,7 +349,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
                   required
                 />
                 <p className="mt-1 text-[11px] text-slate-400">
-                  This crew name will be registered in the platform database for repair dispatches.
+                  This crew name will be registered for repair dispatches.
                 </p>
               </div>
             )}
@@ -372,14 +373,16 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100 transition-colors"
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
-                >
-                  <EyeIcon off={showPassword} />
-                </button>
+                {Boolean(form.password) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
+                  >
+                    <EyeIcon off={showPassword} />
+                  </button>
+                )}
               </div>
 
               {/* Real-Time Password Strength Meter (Weak / Moderate / Strong) */}
@@ -438,7 +441,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
               <div className="relative">
                 <input
                   id="confirm"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Re-enter your password"
                   autoComplete="new-password"
                   value={form.confirm}
@@ -453,6 +456,16 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
                   }`}
                   required
                 />
+                {Boolean(form.confirm) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
+                  >
+                    <EyeIcon off={showConfirmPassword} />
+                  </button>
+                )}
               </div>
 
               {/* Real-time Match Indicator */}
@@ -482,7 +495,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
               {isLoading ? (
                 <>
                   <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Saving to Database...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
                 <span>
@@ -507,7 +520,7 @@ export default function SignUpPanel({ onBack: externalBack, onLogin: externalLog
           </p>
 
           <p className="mt-3 text-center text-[11px] text-slate-400">
-            Credentials will be stored securely with hashed passwords in the PostgreSQL database.
+            Credentials are securely encrypted and protected.
           </p>
         </div>
       </div>

@@ -452,9 +452,9 @@ export default function CrewDashboard() {
       <CrewHeader
         crew={crew}
         leader={leader}
-        // notifications={notifications}
+        notifications={notifications}
         onToggleStatus={handleToggleStatus}
-        // onSelectTaskNotification={handleSelectTaskNotification}
+        onSelectTaskNotification={handleSelectTaskNotification}
         onLogout={handleLogout}
         isTogglingStatus={isTogglingStatus}
       />
@@ -532,12 +532,8 @@ export default function CrewDashboard() {
             </button>
           </nav>
 
-          {/* Quick Telemetry & Refresh */}
+          {/* Refresh Action */}
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>PostgreSQL Live Synced</span>
-            </span>
             <button
               type="button"
               onClick={handleManualRefresh}

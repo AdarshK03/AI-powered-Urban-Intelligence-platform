@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useIssues } from '../context/IssueContext';
 import { useAuth } from '../context/AuthContext';
@@ -80,6 +80,7 @@ function IssueDetailsView({ id }) {
   const [heroIndex, setHeroIndex] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [commentError, setCommentError] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
   const [voteError, setVoteError] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -139,7 +140,29 @@ function IssueDetailsView({ id }) {
     };
   }, [id, token]);
 
-  const issue = fetchedIssue || issueFromContext;
+  const issue = useMemo(() => {
+    if (!fetchedIssue && !issueFromContext) return null;
+    const base = {
+      ...(issueFromContext || {}),
+      ...(fetchedIssue || {}),
+    };
+    if (issueFromContext) {
+      if (typeof issueFromContext.supportCount === 'number') {
+        base.supportCount = issueFromContext.supportCount;
+      }
+      if (issueFromContext.userVote !== undefined) {
+        base.userVote = issueFromContext.userVote;
+      }
+      if (issueFromContext.hasSupported !== undefined) {
+        base.hasSupported = issueFromContext.hasSupported;
+      }
+    }
+    const comments = fetchedIssue?.comments ?? issueFromContext?.comments ?? [];
+    return {
+      ...base,
+      comments,
+    };
+  }, [fetchedIssue, issueFromContext]);
 
   if (loading) {
     return (
@@ -218,7 +241,49 @@ function IssueDetailsView({ id }) {
     }
     try {
       setVoteError('');
-      await supportIssue(issue.id, voteType);
+
+      // Instantly update fetchedIssue state optimistically (0ms response)
+      const currVote = getUserVote(issue.id);
+      let nextVote = null;
+      let delta = 0;
+      if (currVote === voteType) {
+        nextVote = null;
+        delta = voteType === 'up' ? -1 : 1;
+      } else if (currVote === 'up' && voteType === 'down') {
+        nextVote = 'down';
+        delta = -2;
+      } else if (currVote === 'down' && voteType === 'up') {
+        nextVote = 'up';
+        delta = 2;
+      } else {
+        nextVote = voteType;
+        delta = voteType === 'up' ? 1 : -1;
+      }
+
+      setFetchedIssue((prev) =>
+        prev
+          ? {
+              ...prev,
+              userVote: nextVote,
+              hasSupported: nextVote === 'up',
+              supportCount: Math.max(0, (prev.supportCount || 0) + delta),
+            }
+          : prev
+      );
+
+      const res = await supportIssue(issue.id, voteType);
+      if (res) {
+        setFetchedIssue((prev) =>
+          prev
+            ? {
+                ...prev,
+                userVote: res.userVote,
+                hasSupported: res.hasSupported,
+                supportCount: res.supportCount,
+              }
+            : prev
+        );
+      }
     } catch (err) {
       setVoteError(err.message || 'Unable to register vote.');
     }
@@ -264,9 +329,51 @@ function IssueDetailsView({ id }) {
       setCommentError('Comments must be 300 characters or fewer.');
       return;
     }
-    await addComment(issue.id, text);
+
+    const optimisticComment = {
+      id: `temp_${Date.now()}`,
+      author: user?.name || 'Citizen',
+      text,
+      at: new Date().toISOString(),
+      isOptimistic: true,
+    };
+
+    // Optimistically show the comment immediately
+    setFetchedIssue((prev) => {
+      const current = prev || issueFromContext;
+      if (!current) return prev;
+      return {
+        ...current,
+        comments: [...(current.comments || []), optimisticComment],
+      };
+    });
+
     setCommentText('');
     setCommentError('');
+    setIsSubmittingComment(true);
+
+    try {
+      const res = await addComment(issue.id, text);
+      if (res?.comments) {
+        setFetchedIssue((prev) => {
+          const current = prev || issueFromContext;
+          return current ? { ...current, comments: res.comments } : prev;
+        });
+      }
+    } catch (err) {
+      // Revert optimistic comment if request failed
+      setFetchedIssue((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          comments: (prev.comments || []).filter((c) => c.id !== optimisticComment.id),
+        };
+      });
+      setCommentText(text);
+      setCommentError(err.message || 'Failed to post comment. Please try again.');
+    } finally {
+      setIsSubmittingComment(false);
+    }
   };
 
   const handleRateCrew = async (e) => {
@@ -660,8 +767,12 @@ function IssueDetailsView({ id }) {
                 />
                 {commentError && <p role="alert" className={errorCls}>{commentError}</p>}
                 <div className="mt-2">
-                  <button type="submit" className={btnPrimary}>
-                    Post comment
+                  <button
+                    type="submit"
+                    disabled={isSubmittingComment}
+                    className={`${btnPrimary} ${isSubmittingComment ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    {isSubmittingComment ? 'Posting comment...' : 'Post comment'}
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">
@@ -900,7 +1011,7 @@ function IssueDetailsView({ id }) {
                   type="button"
                   onClick={() => handleVote('up')}
                   aria-label={currentVote === 'up' ? 'Remove upvote' : 'Upvote this issue'}
-                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer transition-all ${
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer select-none transition-all duration-150 active:scale-95 ${
                     currentVote === 'up'
                       ? 'bg-teal-600 text-white shadow-md'
                       : 'bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200'
@@ -913,7 +1024,7 @@ function IssueDetailsView({ id }) {
                   type="button"
                   onClick={() => handleVote('down')}
                   aria-label={currentVote === 'down' ? 'Remove downvote' : 'Downvote this issue'}
-                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer transition-all ${
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold cursor-pointer select-none transition-all duration-150 active:scale-95 ${
                     currentVote === 'down'
                       ? 'bg-rose-600 text-white shadow-md'
                       : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'

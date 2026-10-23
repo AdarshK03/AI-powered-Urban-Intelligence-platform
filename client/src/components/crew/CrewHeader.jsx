@@ -79,7 +79,7 @@ export default function CrewHeader({
           </div>
 
           {/* Notifications Dropdown Container */}
-          {/* <div className="relative" ref={dropdownRef}>
+          <div className="relative" ref={dropdownRef}>
             <button
               type="button"
               onClick={() => setNotifOpen((prev) => !prev)}
@@ -101,7 +101,7 @@ export default function CrewHeader({
               onClose={() => setNotifOpen(false)}
               onSelectNotification={onSelectTaskNotification}
             />
-          </div> */}
+          </div>
 
           {/* Logout Button */}
           <button

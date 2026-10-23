@@ -223,6 +223,32 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
+   * Refetch authenticated user profile from backend
+   */
+  const refreshUser = useCallback(async () => {
+    const activeToken = token || localStorage.getItem('uip_token');
+    if (!activeToken) return null;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+          localStorage.setItem('uip_user', JSON.stringify(data.user));
+          return data.user;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to refresh user profile:', err.message);
+    }
+    return null;
+  }, [token]);
+
+  /**
    * Update authenticated user profile
    */
   const updateProfile = useCallback(async ({ name, organisation, phone, city }) => {
@@ -262,6 +288,7 @@ export function AuthProvider({ children }) {
         login,
         register,
         updateProfile,
+        refreshUser,
         logout,
         getSavedCredentials,
       }}

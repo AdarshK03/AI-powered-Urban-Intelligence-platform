@@ -39,6 +39,7 @@ import AnalyticsTab from '../components/admin/AnalyticsTab'
 import ReportsTab from '../components/admin/ReportsTab'
 import NotificationsTab from '../components/admin/NotificationsTab'
 import SettingsTab from '../components/admin/SettingsTab'
+import StatementsTab from '../components/admin/StatementsTab'
 
 // Initial municipal departments dataset
 const INITIAL_DEPARTMENTS = [
@@ -206,6 +207,8 @@ export default function AdminDashboard({ onExit } = {}) {
   const [departments, setDepartments] = useState(INITIAL_DEPARTMENTS)
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS)
   const [crewRequests, setCrewRequests] = useState([])
+  const [statements, setStatements] = useState([])
+  const [isStatementsLoading, setIsStatementsLoading] = useState(false)
   const [settings, setSettings] = useState({
     aiConfidenceThreshold: 85,
     autoDispatchHighPriority: true,
@@ -359,10 +362,130 @@ export default function AdminDashboard({ onExit } = {}) {
     }
   }
 
+  const fetchStatements = useCallback(async () => {
+    setIsStatementsLoading(true)
+    try {
+      const res = await fetch('/api/admin/statements')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && Array.isArray(data.statements)) {
+          setStatements(data.statements)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load statements from database:', err)
+    } finally {
+      setIsStatementsLoading(false)
+    }
+  }, [])
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.settings) {
+          setSettings(data.settings)
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load settings from DB:', err)
+    }
+  }, [token])
+
+  const handleCreateStatement = async (statementData) => {
+    try {
+      const res = await fetch('/api/admin/statements', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(statementData),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to publish statement.')
+      }
+      showToast(data.message || 'Statement published and saved to database!', 'success')
+      await fetchStatements()
+    } catch (err) {
+      showToast(err.message, 'error')
+      throw err
+    }
+  }
+
+  const handleUpdateStatement = async (id, updatedFields) => {
+    try {
+      const res = await fetch(`/api/admin/statements/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(updatedFields),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to update statement.')
+      }
+      showToast(data.message || 'Statement updated in database!', 'success')
+      await fetchStatements()
+    } catch (err) {
+      showToast(err.message, 'error')
+      throw err
+    }
+  }
+
+  const handleDeleteStatement = async (id) => {
+    try {
+      const res = await fetch(`/api/admin/statements/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to delete statement.')
+      }
+      showToast('Statement removed permanently from database', 'info')
+      await fetchStatements()
+    } catch (err) {
+      showToast(err.message, 'error')
+      throw err
+    }
+  }
+
+  const handleSaveSettings = async (newSettings) => {
+    setSettings(newSettings)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ settings: newSettings }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast('System configuration saved persistently to database!', 'success')
+      } else {
+        throw new Error(data.message || 'Failed to persist settings.')
+      }
+    } catch (err) {
+      console.error('Failed to save settings:', err)
+      showToast(err.message || 'Error saving settings to DB.', 'error')
+    }
+  }
+
   useEffect(() => {
     fetchAdminOverview(selectedPeriod)
     fetchAdminMetadata()
-  }, [fetchAdminOverview, fetchAdminMetadata, selectedPeriod])
+    fetchStatements()
+    fetchSettings()
+  }, [fetchAdminOverview, fetchAdminMetadata, fetchStatements, fetchSettings, selectedPeriod])
 
   // Switch time period dynamically
   const handlePeriodChange = (period) => {
@@ -450,6 +573,8 @@ export default function AdminDashboard({ onExit } = {}) {
         locationName: newIssue.location,
         city: newIssue.city || 'Pune',
         department: newIssue.department,
+        latitude: newIssue.latitude || newIssue.lat || null,
+        longitude: newIssue.longitude || newIssue.lng || null,
       }
 
       const res = await fetch('/api/issues', {
@@ -657,9 +782,9 @@ export default function AdminDashboard({ onExit } = {}) {
   // Refresh Telemetry button from live DB
   const handleRefreshData = async () => {
     setIsRefreshing(true)
-    await Promise.all([fetchAdminOverview(), fetchAdminMetadata()])
+    await Promise.all([fetchAdminOverview(), fetchAdminMetadata(), fetchStatements(), fetchSettings()])
     setIsRefreshing(false)
-    showToast('Live PostgreSQL telemetry synchronized', 'success')
+    showToast('Live PostgreSQL telemetry & statements synchronized', 'success')
   }
 
   // Notification handlers
@@ -740,7 +865,7 @@ export default function AdminDashboard({ onExit } = {}) {
     { name: 'Assignments', icon: ClipboardList },
     { name: 'Departments', icon: Building2 },
     { name: 'Analytics', icon: TrendingUp },
-    // { name: 'Reports', icon: FileText },
+    { name: 'Statements', icon: FileText, badge: statements.length },
     { name: 'Notifications', icon: Bell, badge: unreadNotificationCount },
     { name: 'Settings', icon: Settings },
   ]
@@ -885,6 +1010,7 @@ export default function AdminDashboard({ onExit } = {}) {
                 {activeNav === 'Assignments' && 'Dispatch maintenance squads and work orders'}
                 {activeNav === 'Departments' && 'Civic infrastructure bodies and SLA resolution performance'}
                 {activeNav === 'Analytics' && 'Machine learning detection insights and trends'}
+                {activeNav === 'Statements' && 'Publish, audit, and broadcast persistent municipal bulletins'}
                 {activeNav === 'Reports' && 'Civil infrastructure compliance and export sheets'}
                 {activeNav === 'Notifications' && 'Telemetry alerts and high-severity road warnings'}
                 {activeNav === 'Settings' && 'Autonomous platform and AI threshold configuration'}
@@ -899,6 +1025,8 @@ export default function AdminDashboard({ onExit } = {}) {
           {activeNav === 'Dashboard' && (
             <OverviewTab
               currentData={currentData}
+              statements={statements}
+              onNavigateToStatements={() => setActiveNav('Statements')}
               categoryFilter={categoryFilter}
               setCategoryFilter={setCategoryFilter}
               priorityFilter={priorityFilter}
@@ -976,7 +1104,20 @@ export default function AdminDashboard({ onExit } = {}) {
             />
           )}
 
-          {/* TAB 8: NOTIFICATIONS */}
+          {/* TAB 8: STATEMENTS */}
+          {activeNav === 'Statements' && (
+            <StatementsTab
+              statements={statements}
+              isLoading={isStatementsLoading}
+              onRefresh={fetchStatements}
+              onCreateStatement={handleCreateStatement}
+              onUpdateStatement={handleUpdateStatement}
+              onDeleteStatement={handleDeleteStatement}
+              onTriggerToast={showToast}
+            />
+          )}
+
+          {/* TAB 9: NOTIFICATIONS */}
           {activeNav === 'Notifications' && (
             <NotificationsTab
               notifications={notifications}
@@ -989,11 +1130,11 @@ export default function AdminDashboard({ onExit } = {}) {
             />
           )}
 
-          {/* TAB 9: SETTINGS */}
+          {/* TAB 10: SETTINGS */}
           {activeNav === 'Settings' && (
             <SettingsTab
               settings={settings}
-              onSaveSettings={(newSettings) => setSettings(newSettings)}
+              onSaveSettings={handleSaveSettings}
               onTriggerToast={showToast}
             />
           )}

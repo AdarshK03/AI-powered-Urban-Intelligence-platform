@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   RefreshCw,
   FolderGit2,
+  FileText,
 } from 'lucide-react'
 
 // Hook for smooth numerical interpolation
@@ -138,6 +139,8 @@ function DonutChart({ categories, hoveredCategory, setHoveredCategory, activeFil
 
 export default function OverviewTab({
   currentData,
+  statements = [],
+  onNavigateToStatements,
   categoryFilter,
   setCategoryFilter,
   priorityFilter,
@@ -238,6 +241,41 @@ export default function OverviewTab({
           onClick={() => setStatusFilter(statusFilter === 'Resolved' ? null : 'Resolved')}
         />
       </div>
+
+      {/* Active Municipal Statement Widget */}
+      {statements && statements.length > 0 && (
+        <div className="bg-gradient-to-r from-[#0c3947] to-[#0c6b82] rounded-[18px] p-4 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="p-2 rounded-xl bg-white/10 text-cyan-200 shrink-0 mt-0.5">
+              <FileText className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200 border border-cyan-400/30">
+                  {statements[0].priority || 'Normal'} Priority
+                </span>
+                <span className="text-[10px] font-medium text-slate-300">
+                  {statements[0].category} · 📍 {statements[0].city || 'Pune'}
+                </span>
+              </div>
+              <h4 className="text-sm font-bold text-white mt-1 truncate">
+                {statements[0].title}
+              </h4>
+              <p className="text-xs text-slate-200/90 mt-0.5 line-clamp-1">
+                {statements[0].statementText || statements[0].statement_text}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onNavigateToStatements}
+            className="px-3.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold shrink-0 transition flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+          >
+            <span>Manage Statements ({statements.length})</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Middle Two Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

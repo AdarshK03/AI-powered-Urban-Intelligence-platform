@@ -7,23 +7,22 @@ export async function getOverviewStats(req, res) {
   try {
     const { period = 'Last 30 Days' } = req.query || {};
 
-    let timeInterval = "INTERVAL '30 days'";
-    if (period === 'Last 1 Hour') timeInterval = "INTERVAL '1 hour'";
-    else if (period === 'Last 24 Hours') timeInterval = "INTERVAL '24 hours'";
-    else if (period === 'Last 7 Days') timeInterval = "INTERVAL '7 days'";
-    else if (period === 'Last 90 Days') timeInterval = "INTERVAL '90 days'";
-
-    // Filter by period if needed, or get overall
-    const timeFilter = `created_at >= NOW() - ${timeInterval}`;
+    let timeClause = '';
+    if (period === 'Last 1 Hour') timeClause = "WHERE created_at >= NOW() - INTERVAL '1 hour'";
+    else if (period === 'Last 24 Hours') timeClause = "WHERE created_at >= NOW() - INTERVAL '24 hours'";
+    else if (period === 'Last 7 Days') timeClause = "WHERE created_at >= NOW() - INTERVAL '7 days'";
+    else if (period === 'Last 30 Days') timeClause = "WHERE created_at >= NOW() - INTERVAL '30 days'";
+    else if (period === 'Last 90 Days') timeClause = "WHERE created_at >= NOW() - INTERVAL '90 days'";
 
     // 1. Overview counts
     const countsRes = await query(`
       SELECT
         COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE status = 'reported') AS pending,
-        COUNT(*) FILTER (WHERE status IN ('verified', 'assigned', 'in_progress')) AS in_progress,
+        COUNT(*) FILTER (WHERE status IN ('reported', 'pending')) AS pending,
+        COUNT(*) FILTER (WHERE status IN ('verified', 'assigned', 'in_progress', 'work_completed')) AS in_progress,
         COUNT(*) FILTER (WHERE status = 'resolved') AS resolved
       FROM issues
+      ${timeClause}
     `);
 
     const counts = countsRes.rows[0];
@@ -36,6 +35,7 @@ export async function getOverviewStats(req, res) {
     const catRes = await query(`
       SELECT category, COUNT(*) as count
       FROM issues
+      ${timeClause}
       GROUP BY category
       ORDER BY count DESC
     `);
@@ -80,12 +80,16 @@ export async function getOverviewStats(req, res) {
     const prioRes = await query(`
       SELECT severity, COUNT(*) as count
       FROM issues
+      ${timeClause}
       GROUP BY severity
     `);
 
     const prioMap = { high: 0, medium: 0, low: 0 };
     for (const r of prioRes.rows) {
-      prioMap[r.severity.toLowerCase()] = parseInt(r.count, 10);
+      const sevKey = (r.severity || 'medium').toLowerCase();
+      if (prioMap[sevKey] !== undefined) {
+        prioMap[sevKey] += parseInt(r.count, 10);
+      }
     }
 
     const priorities = [
@@ -111,7 +115,7 @@ export async function getOverviewStats(req, res) {
 
     // 4. Latest reports for the admin table
     const reportsRes = await query(`
-      SELECT * FROM issues ORDER BY created_at DESC LIMIT 50
+      SELECT * FROM issues ${timeClause} ORDER BY created_at DESC LIMIT 100
     `);
 
     const reports = reportsRes.rows.map((row) => {
@@ -719,4 +723,239 @@ export async function reviewWorkDone(req, res) {
     return res.status(500).json({ success: false, message: 'Failed to process work review.' });
   }
 }
+
+/**
+ * Dashboard Statements CRUD
+ */
+export async function getDashboardStatements(req, res) {
+  try {
+    const { city, category, activeOnly = 'false' } = req.query || {};
+    let sql = 'SELECT * FROM dashboard_statements WHERE 1=1';
+    const params = [];
+    let idx = 1;
+
+    if (activeOnly === 'true') {
+      sql += ` AND is_active = true`;
+    }
+    if (city && city !== 'All Cities' && city.toLowerCase() !== 'all') {
+      sql += ` AND (LOWER(city) = LOWER($${idx++}) OR city = 'All Cities')`;
+      params.push(city);
+    }
+    if (category && category.toLowerCase() !== 'all') {
+      sql += ` AND LOWER(category) = LOWER($${idx++})`;
+      params.push(category);
+    }
+
+    sql += ' ORDER BY created_at DESC';
+
+    const result = await query(sql, params);
+    const statements = result.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      statementText: row.statement_text,
+      category: row.category,
+      priority: row.priority,
+      authorId: row.author_id,
+      authorName: row.author_name,
+      city: row.city,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+
+    return res.json({
+      success: true,
+      count: statements.length,
+      statements,
+    });
+  } catch (err) {
+    console.error('Error fetching dashboard statements:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch dashboard statements.' });
+  }
+}
+
+export async function createDashboardStatement(req, res) {
+  try {
+    const { title, statementText, category = 'Road Infrastructure', priority = 'Normal', city = 'Pune' } = req.body || {};
+    if (!title || !title.trim() || !statementText || !statementText.trim()) {
+      return res.status(400).json({ success: false, message: 'Statement title and body text are required.' });
+    }
+
+    const id = `stmt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const authorId = req.user?.id || null;
+    const authorName = req.user?.name || 'Municipal Administration';
+
+    const insertSql = `
+      INSERT INTO dashboard_statements (id, title, statement_text, category, priority, author_id, author_name, city, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
+      RETURNING *
+    `;
+
+    const result = await query(insertSql, [
+      id,
+      title.trim(),
+      statementText.trim(),
+      category.trim(),
+      priority,
+      authorId,
+      authorName,
+      city.trim(),
+    ]);
+
+    const row = result.rows[0];
+    return res.status(201).json({
+      success: true,
+      message: 'Dashboard statement published successfully.',
+      statement: {
+        id: row.id,
+        title: row.title,
+        statementText: row.statement_text,
+        category: row.category,
+        priority: row.priority,
+        authorId: row.author_id,
+        authorName: row.author_name,
+        city: row.city,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (err) {
+    console.error('Error creating dashboard statement:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create dashboard statement.' });
+  }
+}
+
+export async function updateDashboardStatement(req, res) {
+  try {
+    const { id } = req.params;
+    const { title, statementText, category, priority, city, isActive } = req.body || {};
+
+    const existing = await query('SELECT * FROM dashboard_statements WHERE id = $1 LIMIT 1', [id]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ success: false, message: 'Statement not found.' });
+    }
+
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (title !== undefined) {
+      updates.push(`title = $${idx++}`);
+      values.push(title.trim());
+    }
+    if (statementText !== undefined) {
+      updates.push(`statement_text = $${idx++}`);
+      values.push(statementText.trim());
+    }
+    if (category !== undefined) {
+      updates.push(`category = $${idx++}`);
+      values.push(category.trim());
+    }
+    if (priority !== undefined) {
+      updates.push(`priority = $${idx++}`);
+      values.push(priority);
+    }
+    if (city !== undefined) {
+      updates.push(`city = $${idx++}`);
+      values.push(city.trim());
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${idx++}`);
+      values.push(!!isActive);
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+
+    const updateSql = `
+      UPDATE dashboard_statements
+      SET ${updates.join(', ')}
+      WHERE id = $${idx}
+      RETURNING *
+    `;
+
+    const result = await query(updateSql, values);
+    const row = result.rows[0];
+
+    return res.json({
+      success: true,
+      message: 'Dashboard statement updated successfully.',
+      statement: {
+        id: row.id,
+        title: row.title,
+        statementText: row.statement_text,
+        category: row.category,
+        priority: row.priority,
+        authorId: row.author_id,
+        authorName: row.author_name,
+        city: row.city,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (err) {
+    console.error('Error updating dashboard statement:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update dashboard statement.' });
+  }
+}
+
+export async function deleteDashboardStatement(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await query('DELETE FROM dashboard_statements WHERE id = $1 RETURNING id', [id]);
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: 'Statement not found.' });
+    }
+    return res.json({ success: true, message: 'Dashboard statement deleted successfully.' });
+  } catch (err) {
+    console.error('Error deleting dashboard statement:', err);
+    return res.status(500).json({ success: false, message: 'Failed to delete dashboard statement.' });
+  }
+}
+
+/**
+ * App Settings persistence
+ */
+export async function getAppSettings(req, res) {
+  try {
+    const result = await query("SELECT value FROM app_settings WHERE key = 'platform_config' LIMIT 1");
+    if (!result.rows.length) {
+      return res.json({
+        success: true,
+        settings: {
+          aiConfidenceThreshold: 85,
+          autoDispatchHighPriority: true,
+          emailAlerts: true,
+          smsEmergencyAlerts: false,
+          dailyDigest: true,
+          slaHighHours: 24,
+          slaMediumHours: 72,
+          slaLowDays: 7,
+          cityZone: 'Delhi Capital NCT Region',
+        },
+      });
+    }
+    return res.json({ success: true, settings: result.rows[0].value });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch settings.' });
+  }
+}
+
+export async function saveAppSettings(req, res) {
+  try {
+    const settings = req.body || {};
+    await query(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('platform_config', $1, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [JSON.stringify(settings)]
+    );
+    return res.json({ success: true, message: 'Platform settings saved persistently.', settings });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to save settings.' });
+  }
+}
+
 
