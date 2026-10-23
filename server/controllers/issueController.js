@@ -353,7 +353,7 @@ export async function getIssueById(req, res) {
     const { id } = req.params;
 
     const issueRes = await query(
-      'SELECT * FROM issues WHERE id = $1 LIMIT 1',
+      'SELECT * FROM issues WHERE id = $1 OR reference_number = $1 LIMIT 1',
       [id]
     );
 
@@ -364,9 +364,12 @@ export async function getIssueById(req, res) {
       });
     }
 
+    const issueRow = issueRes.rows[0];
+    const canonicalId = issueRow.id;
+
     const commentsRes = await query(
       'SELECT * FROM issue_comments WHERE issue_id = $1 ORDER BY created_at ASC',
-      [id]
+      [canonicalId]
     );
 
     let userVote = null;
@@ -374,7 +377,7 @@ export async function getIssueById(req, res) {
     if (req.user) {
       const supRes = await query(
         'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
-        [id, req.user.id]
+        [canonicalId, req.user.id]
       );
 
       if (supRes.rows.length > 0) {
@@ -384,7 +387,7 @@ export async function getIssueById(req, res) {
 
     return res.json({
       success: true,
-      issue: formatIssue(issueRes.rows[0], commentsRes.rows, userVote),
+      issue: formatIssue(issueRow, commentsRes.rows, userVote),
     });
   } catch (err) {
     console.error('Error in getIssueById:', err);
@@ -413,6 +416,7 @@ export async function createIssue(req, res) {
       longitude,
       mapPos,
       photos = [],
+      department,
     } = req.body || {};
 
     // Authentication
@@ -604,6 +608,17 @@ export async function createIssue(req, res) {
     // Save uploaded photos only after duplicate checking.
     const savedPhotos = processUploadedPhotos(photos, id);
 
+    const defaultDeptMap = {
+      light: 'Department of Urban Power & Lighting',
+      drain: 'Drainage & Stormwater Division',
+      water: 'Drainage & Stormwater Division',
+      signal: 'Road Safety & Traffic Engineering',
+      footpath: 'Municipal Corporation (South Zone)',
+      pothole: 'Public Works Department (PWD)',
+      road: 'Public Works Department (PWD)',
+    };
+    const resolvedDepartment = (department && department.trim()) || defaultDeptMap[finalCategory] || 'Public Works Department (PWD)';
+
     const insertSql = `
       INSERT INTO issues (
         id,
@@ -623,6 +638,7 @@ export async function createIssue(req, res) {
         similar_count,
         reporter_id,
         reporter_name,
+        department,
         ai_confidence,
         ai_needs_review,
         ai_predicted_class,
@@ -636,7 +652,7 @@ export async function createIssue(req, res) {
         $1, $2, $3, $4, $5, $6, 'reported',
         $7, $8, $9, $10, $11, $12,
         0, 0, $13, $14, $15, $16, $17,
-        $18, false, true, NOW(), NOW()
+        $18, $19, false, true, NOW(), NOW()
       )
       RETURNING *
     `;
@@ -656,6 +672,7 @@ export async function createIssue(req, res) {
       JSON.stringify(savedPhotos),
       reporterId,
       reporterName,
+      resolvedDepartment,
       aiPrediction?.confidencePercent ?? null,
       aiNeedsReview,
       aiPrediction?.predictedClass ?? null,
@@ -747,10 +764,15 @@ export async function supportIssue(req, res) {
       });
     }
 
-    const issueRes = await query(
-      'SELECT reporter_id, support_count, city FROM issues WHERE id = $1 LIMIT 1',
-      [id]
-    );
+    const [issueRes, uRes] = await Promise.all([
+      query(
+        'SELECT reporter_id, support_count, city FROM issues WHERE id = $1 LIMIT 1',
+        [id]
+      ),
+      req.user?.city
+        ? Promise.resolve(null)
+        : query('SELECT city FROM users WHERE id = $1 LIMIT 1', [userId]),
+    ]);
 
     if (!issueRes.rows.length) {
       return res.status(404).json({
@@ -768,16 +790,7 @@ export async function supportIssue(req, res) {
       });
     }
 
-    let userCity = req.user?.city;
-
-    if (!userCity) {
-      const uRes = await query(
-        'SELECT city FROM users WHERE id = $1 LIMIT 1',
-        [userId]
-      );
-
-      userCity = uRes.rows[0]?.city || 'Pune';
-    }
+    const userCity = req.user?.city || uRes?.rows?.[0]?.city || 'Pune';
 
     if (
       userCity &&
@@ -790,11 +803,6 @@ export async function supportIssue(req, res) {
         message: `Voting is restricted to residents of ${issue.city}. Your registered city is ${userCity}.`,
       });
     }
-
-    await query(
-      `ALTER TABLE issue_supports
-       ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'`
-    ).catch(() => {});
 
     const existing = await query(
       'SELECT vote_type FROM issue_supports WHERE issue_id = $1 AND user_id = $2 LIMIT 1',
@@ -899,20 +907,36 @@ export async function addComment(req, res) {
 
     const userId = req.user ? req.user.id : null;
 
+    // Resolve issue by id OR reference_number to get the canonical issues.id
+    const issueRes = await query(
+      'SELECT id FROM issues WHERE id = $1 OR reference_number = $1 LIMIT 1',
+      [id]
+    );
+
+    if (issueRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found.',
+      });
+    }
+
+    const targetIssueId = issueRes.rows[0].id;
+
     await query(
       `INSERT INTO issue_comments
        (id, issue_id, user_id, author_name, text)
        VALUES ($1, $2, $3, $4, $5)`,
-      [commentId, id, userId, authorName, text.trim()]
+      [commentId, targetIssueId, userId, authorName, text.trim()]
     );
 
     const commentsRes = await query(
       'SELECT * FROM issue_comments WHERE issue_id = $1 ORDER BY created_at ASC',
-      [id]
+      [targetIssueId]
     );
 
     return res.status(201).json({
       success: true,
+      issueId: targetIssueId,
       comment: {
         id: commentId,
         author: authorName,

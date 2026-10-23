@@ -111,10 +111,47 @@ export function IssueProvider({ children }) {
 
   useEffect(() => {
     fetchNotifications();
-  }, [fetchNotifications, issues]);
+  }, [fetchNotifications]);
 
   const supportIssue = useCallback(
     async (id, voteType = 'up') => {
+      let previousIssue = null;
+
+      // Instant optimistic UI update: reflects immediately on button click
+      setIssues((prev) =>
+        prev.map((i) => {
+          if (i.id === id) {
+            previousIssue = { ...i };
+            const currentVote = i.userVote || (i.hasSupported ? 'up' : null);
+            let nextVote = null;
+            let delta = 0;
+
+            if (currentVote === voteType) {
+              // Toggling current vote off
+              nextVote = null;
+              delta = voteType === 'up' ? -1 : 1;
+            } else if (currentVote === 'up' && voteType === 'down') {
+              nextVote = 'down';
+              delta = -2;
+            } else if (currentVote === 'down' && voteType === 'up') {
+              nextVote = 'up';
+              delta = 2;
+            } else {
+              nextVote = voteType;
+              delta = voteType === 'up' ? 1 : -1;
+            }
+
+            return {
+              ...i,
+              userVote: nextVote,
+              hasSupported: nextVote === 'up',
+              supportCount: Math.max(0, (i.supportCount || 0) + delta),
+            };
+          }
+          return i;
+        })
+      );
+
       try {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -127,6 +164,7 @@ export function IssueProvider({ children }) {
 
         const json = await res.json();
         if (res.ok && json.success) {
+          // Reconcile with authoritative server counts
           setIssues((prev) =>
             prev.map((i) =>
               i.id === id
@@ -141,9 +179,21 @@ export function IssueProvider({ children }) {
           );
           return json;
         } else {
+          // Revert optimistic update on server error
+          if (previousIssue) {
+            setIssues((prev) =>
+              prev.map((i) => (i.id === id ? previousIssue : i))
+            );
+          }
           throw new Error(json.message || 'Failed to submit vote.');
         }
       } catch (err) {
+        // Revert optimistic update on network error
+        if (previousIssue) {
+          setIssues((prev) =>
+            prev.map((i) => (i.id === id ? previousIssue : i))
+          );
+        }
         console.error('Error voting on issue:', err);
         throw err;
       }
@@ -173,7 +223,7 @@ export function IssueProvider({ children }) {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch(`/api/issues/${id}/comments`, {
+        const res = await fetch(`/api/issues/${encodeURIComponent(id)}/comments`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -186,7 +236,7 @@ export function IssueProvider({ children }) {
         if (res.ok && json.success) {
           setIssues((prev) =>
             prev.map((i) =>
-              i.id === id
+              i.id === id || i.referenceNumber === id || (json.issueId && i.id === json.issueId)
                 ? {
                     ...i,
                     comments: json.comments,
@@ -195,10 +245,13 @@ export function IssueProvider({ children }) {
             )
           );
           fetchNotifications();
-          return json.comment;
+          return json;
+        } else {
+          throw new Error(json.message || 'Failed to post comment.');
         }
       } catch (err) {
         console.error('Error posting comment:', err);
+        throw err;
       }
     },
     [token, user?.name, fetchNotifications]

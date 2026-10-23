@@ -14,8 +14,8 @@ export default function IssueCard({ issue, onOpen, layout = 'card' }) {
       className={`block w-full cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md ${row ? 'flex gap-3 p-2' : ''} ${focusRing}`}
     >
       <IssuePhoto
-        photo={issue.photos[0]}
-        alt={`Photo of ${issue.title}`}
+        photo={issue.photos?.[0]}
+        alt={`Photo of ${issue.title || 'civic issue'}`}
         className={row ? 'h-20 w-24 shrink-0 rounded-lg' : 'h-28 w-full'}
       />
       <span className={`block ${row ? 'min-w-0 flex-1' : 'p-3'}`}>

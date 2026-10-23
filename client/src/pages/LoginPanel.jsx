@@ -496,13 +496,15 @@ export default function LoginPanel({
                         className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100 transition-colors"
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword((prev) => !prev)}
-                        className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
-                      >
-                        <EyeIcon off={showNewPassword} />
-                      </button>
+                      {Boolean(newPassword) && (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword((prev) => !prev)}
+                          className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
+                        >
+                          <EyeIcon off={showNewPassword} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -521,13 +523,15 @@ export default function LoginPanel({
                         className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100 transition-colors"
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
-                      >
-                        <EyeIcon off={showConfirmPassword} />
-                      </button>
+                      {Boolean(confirmPassword) && (
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword((prev) => !prev)}
+                          className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
+                        >
+                          <EyeIcon off={showConfirmPassword} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -754,14 +758,16 @@ export default function LoginPanel({
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 pr-11 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100 transition-colors"
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
-                >
-                  <EyeIcon off={showPassword} />
-                </button>
+                {Boolean(password) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-teal-700 cursor-pointer"
+                  >
+                    <EyeIcon off={showPassword} />
+                  </button>
+                )}
               </div>
             </div>
 

@@ -14,10 +14,26 @@ import {
   respondToCrewTaskRequest,
   classifyIssue,
   reviewWorkDone,
+  getDashboardStatements,
+  createDashboardStatement,
+  updateDashboardStatement,
+  deleteDashboardStatement,
+  getAppSettings,
+  saveAppSettings,
 } from '../controllers/adminController.js';
 import { authenticateToken, requireRole, optionalAuth } from '../middleware/authMiddleware.js';
 
 const router = Router();
+
+// Dashboard Statements (Public read, admin create/update/delete)
+router.get('/statements', optionalAuth, getDashboardStatements);
+router.post('/statements', authenticateToken, requireRole('admin'), createDashboardStatement);
+router.put('/statements/:id', authenticateToken, requireRole('admin'), updateDashboardStatement);
+router.delete('/statements/:id', authenticateToken, requireRole('admin'), deleteDashboardStatement);
+
+// Platform System & AI Settings
+router.get('/settings', optionalAuth, getAppSettings);
+router.post('/settings', authenticateToken, requireRole('admin'), saveAppSettings);
 
 // Issue defect classification (Admin)
 router.patch('/issues/:id/classify', authenticateToken, requireRole('admin'), classifyIssue);

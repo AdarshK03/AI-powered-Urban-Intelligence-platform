@@ -170,6 +170,20 @@ export async function initDb() {
       value JSONB NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS dashboard_statements (
+      id VARCHAR(100) PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      statement_text TEXT NOT NULL,
+      category VARCHAR(100) DEFAULT 'Road Infrastructure',
+      priority VARCHAR(50) DEFAULT 'Normal',
+      author_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      author_name VARCHAR(255) DEFAULT 'Municipal Administration',
+      city VARCHAR(100) DEFAULT 'Pune',
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   console.log('✅ PostgreSQL tables verified/created successfully.');
@@ -183,6 +197,24 @@ export async function initDb() {
 
     // Dynamic migrations
     await query(`
+      CREATE TABLE IF NOT EXISTS dashboard_statements (
+        id VARCHAR(100) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        statement_text TEXT NOT NULL,
+        category VARCHAR(100) DEFAULT 'Road Infrastructure',
+        priority VARCHAR(50) DEFAULT 'Normal',
+        author_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+        author_name VARCHAR(255) DEFAULT 'Municipal Administration',
+        city VARCHAR(100) DEFAULT 'Pune',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await query("CREATE INDEX IF NOT EXISTS idx_dashboard_statements_city ON dashboard_statements(city)");
+    await query("CREATE INDEX IF NOT EXISTS idx_dashboard_statements_created ON dashboard_statements(created_at DESC)");
+
+    await query(`
       CREATE TABLE IF NOT EXISTS issue_photo_hashes (
         id BIGSERIAL PRIMARY KEY,
         issue_id VARCHAR(100) NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
@@ -193,9 +225,39 @@ export async function initDb() {
     await query("CREATE INDEX IF NOT EXISTS idx_issue_photo_hashes_hash ON issue_photo_hashes(image_hash)");
     await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Pune'");
     await query("ALTER TABLE issue_supports ADD COLUMN IF NOT EXISTS vote_type VARCHAR(10) DEFAULT 'up'");
+    await query("CREATE INDEX IF NOT EXISTS idx_issue_supports_issue_vote ON issue_supports(issue_id, vote_type)");
     await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS ai_needs_review BOOLEAN DEFAULT FALSE");
     await query("ALTER TABLE issues ADD COLUMN IF NOT EXISTS ai_predicted_class VARCHAR(100)");
     await query("UPDATE issues SET city = 'Pune' WHERE city = 'All Cities' OR city IS NULL");
+
+    // Seed default departments if empty
+    const deptsCheck = await query('SELECT COUNT(*) FROM departments');
+    if (parseInt(deptsCheck.rows[0].count, 10) === 0) {
+      await query(`
+        INSERT INTO departments (id, name, short_code, officer, email, phone, avg_response_hours)
+        VALUES
+          ('dept-1', 'Public Works Department (PWD)', 'PWD', 'Er. Rajesh K. Sharma', 'pwd.delhi@gov.in', '+91 11 2339 2001', 14),
+          ('dept-2', 'Municipal Corporation (South Zone)', 'MCD', 'Smt. Ananya Sen, IAS', 'mcd.south@delhi.gov.in', '+91 11 2651 8840', 22),
+          ('dept-3', 'Water & Sewage Utility Authority', 'DJB', 'Dr. Vikram Malhotra', 'support@delhijalboard.nic.in', '+91 11 2353 8490', 19),
+          ('dept-4', 'Department of Urban Power & Lighting', 'BSES', 'Shri Amitav Ghosh', 'streetlighting@urbanpower.org', '+91 11 3999 9707', 8),
+          ('dept-5', 'Drainage & Stormwater Division', 'IFCD', 'Er. Kavita Verma', 'stormwater@delhi-flood.nic.in', '+91 11 2386 1124', 12),
+          ('dept-6', 'Road Safety & Traffic Engineering', 'DTP', 'DCP Manish Singhal, IPS', 'trafficsafety@delhipolice.gov.in', '+91 11 2584 4444', 6)
+        ON CONFLICT (id) DO NOTHING
+      `);
+    }
+
+    // Seed default statements if empty
+    const statementsCheck = await query('SELECT COUNT(*) FROM dashboard_statements');
+    if (parseInt(statementsCheck.rows[0].count, 10) === 0) {
+      await query(`
+        INSERT INTO dashboard_statements (id, title, statement_text, category, priority, author_name, city, is_active)
+        VALUES
+          ('stmt-1', 'Pre-Monsoon Road & Drainage Inspection Directive', 'All municipal engineering field teams are mandated to verify storm drains, open grates, and asphalt sealant integrity within 48 hours of citizen reporting.', 'Monsoon Preparedness', 'High', 'Municipal Administration', 'Pune', true),
+          ('stmt-2', 'Rapid Pothole Redressal & Resurfacing Commitment', 'Citizens reporting critical category potholes will receive verified automated repair dispatches within 24 hours under the Zero-Hazard Road Initiative.', 'Road Safety', 'Urgent', 'Chief Municipal Engineer', 'Pune', true),
+          ('stmt-3', 'Public Infrastructure Audit & SLA Performance Statement', 'Monthly quality audits across PWD, MCD, and DJB electrical zones are now published in real time. Citizens may track contractor SLA compliance transparently.', 'Civic Governance', 'Normal', 'Urban Governance Board', 'Pune', true)
+        ON CONFLICT (id) DO NOTHING
+      `);
+    }
 
     // Crew-specific migrations
     await query("ALTER TABLE crews ADD COLUMN IF NOT EXISTS leader_id VARCHAR(100)");
@@ -270,6 +332,28 @@ export async function initDb() {
 
     // Link crew-1 to this leader
     await query("UPDATE crews SET leader_id = $1 WHERE id = 'crew-1'", [crewLeaderId]);
+
+    // Seed default admin user account if not exists
+    const adminCheck = await query("SELECT id FROM users WHERE email = 'admin@urban-intelligence.gov.in' LIMIT 1");
+    if (adminCheck.rows.length === 0) {
+      const bcryptModule = await import('bcryptjs');
+      const bcrypt = bcryptModule.default || bcryptModule;
+      const salt = bcrypt.genSaltSync(10);
+      const hash = bcrypt.hashSync('admin123', salt);
+      await query(`
+        INSERT INTO users (id, name, email, password_hash, role, organisation, phone, city)
+        VALUES ($1, $2, $3, $4, 'admin', $5, $6, 'Pune')
+        ON CONFLICT (email) DO NOTHING
+      `, [
+        'usr_admin_001',
+        'Municipal Administrator',
+        'admin@urban-intelligence.gov.in',
+        hash,
+        'Municipal Road Infrastructure Administration',
+        '+91 98765 43210'
+      ]);
+      console.log('🛡️ Default Municipal Administrator user verified and seeded.');
+    }
 
   } catch (cleanErr) {
     console.warn('Notice: Migration step notice:', cleanErr.message);

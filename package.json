@@ -2,6 +2,7 @@
   "name": "ai-powered-urban-intelligence-platform",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "AI-powered Urban Intelligence Platform (UIP) with Node.js authentication backend",
   "scripts": {
     "start": "node server/server.js",
@@ -10,6 +11,7 @@
     "client": "npm --prefix client run dev",
     "client:build": "npm --prefix client run build",
     "ml": "node scripts/start-ml.js",
+    "ml:test": "node scripts/test-ml.js",
     "dev:all": "concurrently -n \"SERVER,CLIENT,ML\" -c \"blue.bold,green.bold,magenta.bold\" \"npm run server\" \"npm run client\" \"npm run ml\"",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client"
   },
